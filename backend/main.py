@@ -5,6 +5,7 @@ from typing import Literal,Annotated
 import pickle
 import pandas as pd
 import numpy as np 
+from fastapi.middleware.cors import CORSMiddleware
 
 with open('Model.pkl','rb') as f:
     model = pickle.load(f)
@@ -115,7 +116,7 @@ def predict(data : UserInput):
 
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Internal Server Error: {str(e)}")
-        from fastapi.middleware.cors import CORSMiddleware
+        
 
 app.add_middleware(
     CORSMiddleware,
