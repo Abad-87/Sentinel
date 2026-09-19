@@ -115,3 +115,12 @@ def predict(data : UserInput):
 
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Internal Server Error: {str(e)}")
+        from fastapi.middleware.cors import CORSMiddleware
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"], # Or specify your React app's URL
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
