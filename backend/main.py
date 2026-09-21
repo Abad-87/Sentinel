@@ -101,9 +101,8 @@ def get_recommendation(data: UserInput, output: str) -> list[str]:
     return recommendations
 
 
-# Handlers mapped to both trailing-slash and non-trailing-slash endpoints to avoid preflight redirects
+
 @app.post('/predict')
-@app.post('/predict/')
 def predict(data: UserInput):
     try:
         df = pd.DataFrame([{
