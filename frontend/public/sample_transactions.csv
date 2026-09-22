@@ -1,0 +1,9 @@
+step,type,amount,oldbalanceOrg,newbalanceOrig,newbalanceDest,sender,recipient
+2,TRANSFER,320000.00,320000.00,0.00,0.00,acc_8291_alec,acc_4412_ghost
+14,PAYMENT,65.20,1540.00,1474.80,0.00,acc_1092_claire,merch_walmart_store
+4,CASH_OUT,92000.00,105000.00,13000.00,45000.00,acc_7721_devon,atm_terminal_92
+18,TRANSFER,4200.00,8500.00,4300.00,12000.00,acc_3391_maya,acc_9921_dest
+6,TRANSFER,450000.00,450000.00,0.00,0.00,acc_9912_victor,acc_1120_wire
+11,CASH_IN,1200.00,3400.00,4600.00,3400.00,acc_4411_liam,acc_0012_bank
+16,PAYMENT,18.50,650.00,631.50,0.00,acc_5582_noah,merch_spotify_sub
+23,DEBIT,450.00,3200.00,2750.00,0.00,acc_6621_zoe,acc_utility_water

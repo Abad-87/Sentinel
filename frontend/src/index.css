@@ -1,111 +1,117 @@
+/* IBM Carbon & Stitch Design Tokens */
 :root {
-  --text: #6b6375;
-  --text-h: #08060d;
-  --bg: #fff;
-  --border: #e5e4e7;
-  --code-bg: #f4f3ec;
-  --accent: #aa3bff;
-  --accent-bg: rgba(170, 59, 255, 0.1);
-  --accent-border: rgba(170, 59, 255, 0.5);
-  --social-bg: rgba(244, 243, 236, 0.5);
-  --shadow:
-    rgba(0, 0, 0, 0.1) 0 10px 15px -3px, rgba(0, 0, 0, 0.05) 0 4px 6px -2px;
+  /* Carbon Dark Theme Palette (Gray 100 / Obsidian) */
+  --carbon-bg-base: #0b0f17;
+  --carbon-surface-dim: #0d141d;
+  --carbon-surface: #111827;
+  --carbon-surface-container-low: #151c25;
+  --carbon-surface-container: #192029;
+  --carbon-surface-container-high: #232a34;
+  --carbon-surface-container-highest: #2e353f;
+  --carbon-surface-bright: #333a44;
 
-  --sans: system-ui, 'Segoe UI', Roboto, sans-serif;
-  --heading: system-ui, 'Segoe UI', Roboto, sans-serif;
-  --mono: ui-monospace, Consolas, monospace;
+  /* Accent & Telemetry Colors */
+  --carbon-blue: #0f62fe;
+  --carbon-blue-hover: #0353e9;
+  --carbon-blue-active: #002d9c;
+  --carbon-blue-subtle: rgba(15, 98, 254, 0.15);
 
-  font: 18px/145% var(--sans);
-  letter-spacing: 0.18px;
-  color-scheme: light dark;
-  color: var(--text);
-  background: var(--bg);
-  font-synthesis: none;
-  text-rendering: optimizeLegibility;
+  --carbon-cyan: #06b6d4;
+  --carbon-cyan-subtle: rgba(6, 182, 212, 0.15);
+
+  --carbon-green: #10b981;
+  --carbon-green-subtle: rgba(16, 185, 129, 0.15);
+
+  --carbon-red: #ef4444;
+  --carbon-red-container: rgba(239, 68, 68, 0.18);
+  --carbon-red-subtle: rgba(239, 68, 68, 0.12);
+
+  --carbon-amber: #f59e0b;
+  --carbon-amber-subtle: rgba(245, 158, 11, 0.15);
+
+  /* Typography & Structure */
+  --carbon-text-primary: #f9fafb;
+  --carbon-text-secondary: #c3c6d7;
+  --carbon-text-muted: #8d90a0;
+  --carbon-border-subtle: #1f2937;
+  --carbon-border-medium: #374151;
+  --carbon-border-focus: #0f62fe;
+
+  /* Font Stacks */
+  --font-sans: 'Inter', 'IBM Plex Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  --font-mono: 'IBM Plex Mono', ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+
+  /* Layout */
+  --sidebar-width: 272px;
+  --header-height: 58px;
+
+  /* Transitions */
+  --transition-fast: 0.15s cubic-bezier(0.2, 0, 0.38, 0.9);
+  --transition-normal: 0.25s cubic-bezier(0.2, 0, 0.38, 0.9);
+}
+
+/* Global Reset */
+*, *::before, *::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+html, body {
+  background-color: var(--carbon-bg-base);
+  color: var(--carbon-text-primary);
+  font-family: var(--font-sans);
+  font-size: 14px;
+  line-height: 1.5;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
-
-  @media (max-width: 1024px) {
-    font-size: 16px;
-  }
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    --text: #9ca3af;
-    --text-h: #f3f4f6;
-    --bg: #16171d;
-    --border: #2e303a;
-    --code-bg: #1f2028;
-    --accent: #c084fc;
-    --accent-bg: rgba(192, 132, 252, 0.15);
-    --accent-border: rgba(192, 132, 252, 0.5);
-    --social-bg: rgba(47, 48, 58, 0.5);
-    --shadow:
-      rgba(0, 0, 0, 0.4) 0 10px 15px -3px, rgba(0, 0, 0, 0.25) 0 4px 6px -2px;
-  }
-
-  #social .button-icon {
-    filter: invert(1) brightness(2);
-  }
-}
-
-body {
-  margin: 0;
+  min-height: 100vh;
+  width: 100%;
+  overflow-x: hidden;
 }
 
 #root {
-  width: 1126px;
-  max-width: 100%;
-  margin: 0 auto;
-  text-align: center;
-  border-inline: 1px solid var(--border);
-  min-height: 100svh;
+  width: 100%;
+  min-height: 100vh;
   display: flex;
   flex-direction: column;
-  box-sizing: border-box;
-}
-
-h1,
-h2 {
-  font-family: var(--heading);
-  font-weight: 500;
-  color: var(--text-h);
-}
-
-h1 {
-  font-size: 56px;
-  letter-spacing: -1.68px;
-  margin: 32px 0;
-  @media (max-width: 1024px) {
-    font-size: 36px;
-    margin: 20px 0;
-  }
-}
-h2 {
-  font-size: 24px;
-  line-height: 118%;
-  letter-spacing: -0.24px;
-  margin: 0 0 8px;
-  @media (max-width: 1024px) {
-    font-size: 20px;
-  }
-}
-p {
   margin: 0;
+  padding: 0;
+  text-align: left;
+  border: none;
 }
 
-code,
-.counter {
-  font-family: var(--mono);
-  display: inline-flex;
-  border-radius: 4px;
-  color: var(--text-h);
+/* Custom Scrollbar for IBM Carbon Console */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
 }
 
-code {
-  font-size: 15px;
-  line-height: 135%;
-  padding: 4px 8px;
-  background: var(--code-bg);
+::-webkit-scrollbar-track {
+  background: var(--carbon-surface-container-low);
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--carbon-surface-container-highest);
+  border-radius: 3px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--carbon-border-medium);
+}
+
+/* Selection */
+::selection {
+  background: var(--carbon-blue);
+  color: #ffffff;
+}
+
+/* Base Form & Button Resets */
+button {
+  font-family: inherit;
+  cursor: pointer;
+}
+
+input, select, textarea {
+  font-family: inherit;
 }

@@ -1,0 +1,46 @@
+[
+  {
+    "id": "TXN-JSON-001",
+    "step": 2,
+    "type": "TRANSFER",
+    "amount": 290000.0,
+    "oldbalanceOrg": 290000.0,
+    "newbalanceOrig": 0.0,
+    "newbalanceDest": 0.0,
+    "sender": "acc_7812_karen",
+    "recipient": "acc_3319_suspicious"
+  },
+  {
+    "id": "TXN-JSON-002",
+    "step": 15,
+    "type": "PAYMENT",
+    "amount": 89.99,
+    "oldbalanceOrg": 4200.0,
+    "newbalanceOrig": 4110.01,
+    "newbalanceDest": 0.0,
+    "sender": "acc_5510_jason",
+    "recipient": "merch_apple_store"
+  },
+  {
+    "id": "TXN-JSON-003",
+    "step": 3,
+    "type": "CASH_OUT",
+    "amount": 115000.0,
+    "oldbalanceOrg": 120000.0,
+    "newbalanceOrig": 5000.0,
+    "newbalanceDest": 85000.0,
+    "sender": "acc_9021_brian",
+    "recipient": "atm_downtown_01"
+  },
+  {
+    "id": "TXN-JSON-004",
+    "step": 12,
+    "type": "TRANSFER",
+    "amount": 1500.0,
+    "oldbalanceOrg": 6000.0,
+    "newbalanceOrig": 4500.0,
+    "newbalanceDest": 1500.0,
+    "sender": "acc_3104_alice",
+    "recipient": "acc_8812_bob"
+  }
+]
