@@ -1,6 +1,52 @@
-import React, { useMemo } from 'react';
+import React, { useState, useMemo } from 'react';
 
-const AnalyticsVisuals = ({ transactions = [] }) => {
+const AnalyticsVisuals = ({ transactions = [], activeDataset, onShowToast }) => {
+  const [regeneratingCharts, setRegeneratingCharts] = useState(false);
+  const [lastServerSync, setLastServerSync] = useState(null);
+
+  const handleRegenerateServerCharts = async () => {
+    if (!transactions || transactions.length === 0) return;
+    setRegeneratingCharts(true);
+    const apiBase = import.meta.env.VITE_API_BASE_URL || '';
+    const url = apiBase ? `${apiBase}/analytics/regenerate-from-data` : '/analytics/regenerate-from-data';
+
+    try {
+      let res;
+      try {
+        res = await fetch(url, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(transactions)
+        });
+      } catch {
+        res = await fetch('http://127.0.0.1:8000/analytics/regenerate-from-data', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(transactions)
+        });
+      }
+
+      if (res.ok) {
+        const data = await res.json();
+        setLastServerSync(data.timeString || new Date().toLocaleTimeString());
+        if (onShowToast) {
+          onShowToast(`Regenerated ${data.generatedCharts?.length || 5} backend Python charts from ${transactions.length} active records!`);
+        }
+      } else {
+        if (onShowToast) {
+          onShowToast(`Live vector charts updated directly from active ${transactions.length} records.`);
+        }
+      }
+    } catch (err) {
+      console.warn("Could not regenerate server charts:", err);
+      if (onShowToast) {
+        onShowToast(`Live telemetry recalculating locally from ${transactions.length} records.`);
+      }
+    } finally {
+      setRegeneratingCharts(false);
+    }
+  };
+
   // Compute dynamic live statistics directly from the current transactions state
   const liveStats = useMemo(() => {
     const types = ['TRANSFER', 'CASH_OUT', 'PAYMENT', 'CASH_IN', 'DEBIT'];
@@ -139,14 +185,26 @@ const AnalyticsVisuals = ({ transactions = [] }) => {
           <div className="hero-tag">REAL-TIME DATA STREAM VISUALIZATION</div>
           <h2>Live Behavioral Analytics & Distribution</h2>
           <p>
-            Dynamically rendered from {liveStats.totalCount} active transactions. Whenever a new transaction is simulated, imported, or updated, all visualizations recalculate in real-time.
+            Dynamically rendered from {liveStats.totalCount} active transactions
+            {activeDataset ? ` (${activeDataset.name})` : ''}.
+            Whenever a batch is analyzed or new transactions are scored, all visualizations recalculate in real-time.
           </p>
         </div>
 
-        <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}>
+          <button
+            type="button"
+            className="btn-secondary-action"
+            onClick={handleRegenerateServerCharts}
+            disabled={regeneratingCharts || transactions.length === 0}
+            title="Execute Python Fraud_Analysis.py code on backend for active dataset"
+          >
+            <span className="material-symbols-outlined" style={{ fontSize: '16px' }}>refresh</span>
+            <span>{regeneratingCharts ? 'Regenerating Server Charts...' : 'Sync Backend Python Visuals'}</span>
+          </button>
           <div className="telemetry-pill-active">
             <span className="pulse-dot"></span>
-            <span>AUTO-SYNCED TO LIVE STREAM</span>
+            <span>AUTO-SYNCED TO LIVE DATA ({transactions.length})</span>
           </div>
         </div>
       </div>

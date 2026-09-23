@@ -12,7 +12,35 @@ import './App.css';
 function App() {
   // Navigation tabs: 'DASHBOARD' | 'TRANSACTIONS' | 'ENTITIES' | 'RULES' | 'ANALYTICS' | 'BATCH'
   const [currentTab, setCurrentTab] = useState('DASHBOARD');
-  const [transactions, setTransactions] = useState(initialTransactions);
+
+  // Load transactions from localStorage or fallback to default initial transactions
+  const [transactions, setTransactions] = useState(() => {
+    try {
+      const saved = localStorage.getItem('sentinel_transactions');
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+      }
+    } catch (e) {
+      console.warn('Failed to load transactions from localStorage', e);
+    }
+    return initialTransactions;
+  });
+
+  // Track active dataset metadata across the application
+  const [activeDataset, setActiveDataset] = useState(() => {
+    try {
+      const saved = localStorage.getItem('sentinel_active_dataset');
+      if (saved) return JSON.parse(saved);
+    } catch {}
+    return {
+      name: 'Default Demo Dataset',
+      source: 'initial',
+      updatedAt: 'System Default',
+      totalCount: initialTransactions.length
+    };
+  });
+
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [selectedTxn, setSelectedTxn] = useState(null);
   const [backendStatus, setBackendStatus] = useState('checking');
@@ -20,6 +48,24 @@ function App() {
   const [searchQuery, setSearchQuery] = useState('');
   const [notification, setNotification] = useState(null);
   const [selectedTxnIds, setSelectedTxnIds] = useState(new Set());
+
+  // Automatically persist transactions to localStorage
+  useEffect(() => {
+    try {
+      localStorage.setItem('sentinel_transactions', JSON.stringify(transactions));
+    } catch (e) {
+      console.warn('Failed to persist transactions to localStorage', e);
+    }
+  }, [transactions]);
+
+  // Automatically persist dataset metadata to localStorage
+  useEffect(() => {
+    try {
+      localStorage.setItem('sentinel_active_dataset', JSON.stringify(activeDataset));
+    } catch (e) {
+      console.warn('Failed to persist dataset info to localStorage', e);
+    }
+  }, [activeDataset]);
 
   // Backend Health check
   const checkBackendHealth = async () => {
@@ -60,17 +106,77 @@ function App() {
   const handlePredictionResult = (result, newTxn) => {
     if (newTxn) {
       setTransactions((prev) => [newTxn, ...prev]);
-      showNotification(`Added transaction ${newTxn.id} scored as ${newTxn.risk} (${newTxn.fraudProbability}%)`);
+      setActiveDataset((prev) => ({
+        ...prev,
+        totalCount: prev.totalCount + 1,
+        updatedAt: new Date().toLocaleTimeString()
+      }));
+      showNotification(`Added transaction ${newTxn.id} scored as ${newTxn.risk} (${newTxn.fraudProbability}%) across all tabs.`);
     }
   };
 
-  // When transactions are imported via Batch upload
-  const handleImportBatch = (batchItems) => {
-    if (batchItems && batchItems.length > 0) {
-      setTransactions((prev) => [...batchItems, ...prev]);
-      setCurrentTab('TRANSACTIONS');
-      showNotification(`Imported ${batchItems.length} transactions into Live Feed.`);
+  // Called automatically whenever CSV/JSON batch analysis completes
+  const handleBatchAnalyzed = (batchItems, meta = {}) => {
+    if (!batchItems || batchItems.length === 0) return;
+
+    const mode = meta.mode || 'replace'; // 'replace' or 'append'
+    const fileName = meta.fileName || 'Uploaded Batch';
+
+    if (mode === 'replace') {
+      setTransactions(batchItems);
+      setActiveDataset({
+        name: fileName,
+        source: 'upload',
+        updatedAt: new Date().toLocaleTimeString(),
+        totalCount: batchItems.length
+      });
+      setSelectedTxnIds(new Set());
+      showNotification(`✨ Active dataset updated: ${batchItems.length} transactions from "${fileName}" are now live in ALL tabs!`);
+    } else {
+      setTransactions((prev) => {
+        const existingIds = new Set(prev.map(t => t.id));
+        const newUnique = batchItems.filter(t => !existingIds.has(t.id));
+        const merged = [...newUnique, ...prev];
+        setActiveDataset({
+          name: `${fileName} (+${prev.length} prior)`,
+          source: 'upload_merged',
+          updatedAt: new Date().toLocaleTimeString(),
+          totalCount: merged.length
+        });
+        return merged;
+      });
+      showNotification(`✨ Appended ${batchItems.length} transactions from "${fileName}". Flowing into ALL tabs!`);
     }
+  };
+
+  // Re-evaluation of all transactions (e.g. from Detection Rules sensitivity deployment)
+  const handleUpdateAllTransactions = (updatedItems, reason = 'Rule Re-evaluation') => {
+    if (!updatedItems || updatedItems.length === 0) return;
+    setTransactions(updatedItems);
+    setActiveDataset((prev) => ({
+      ...prev,
+      updatedAt: new Date().toLocaleTimeString()
+    }));
+    showNotification(`⚡ ${reason} applied: Updated risk analysis across all ${updatedItems.length} transactions in every tab.`);
+  };
+
+  // Revert back to standard initial demo transactions
+  const handleResetToDemo = () => {
+    setTransactions(initialTransactions);
+    setActiveDataset({
+      name: 'Default Demo Dataset',
+      source: 'initial',
+      updatedAt: new Date().toLocaleTimeString(),
+      totalCount: initialTransactions.length
+    });
+    setSelectedTxnIds(new Set());
+    showNotification(`Reset to default demo dataset (${initialTransactions.length} transactions) across all tabs.`);
+  };
+
+  // Manual import trigger for backwards compatibility
+  const handleImportBatch = (batchItems) => {
+    handleBatchAnalyzed(batchItems, { fileName: 'Imported Batch', mode: 'append' });
+    setCurrentTab('TRANSACTIONS');
   };
 
   // Global status update (Freeze/Approve)
@@ -158,31 +264,65 @@ function App() {
     };
   }, [transactions]);
 
+  // Tab display metadata for breadcrumbs & subtitles
+  const tabMetadata = {
+    DASHBOARD: {
+      breadcrumb: 'Dashboard',
+      title: 'Dashboard',
+      subtitle: 'Real-time AI fraud interception and financial risk command center.'
+    },
+    TRANSACTIONS: {
+      breadcrumb: 'Transactions',
+      title: 'Transactions',
+      subtitle: 'Monitor real-time live transaction feed, review compliance and manage quarantine.'
+    },
+    ENTITIES: {
+      breadcrumb: 'Entity Network',
+      title: 'Entity Network',
+      subtitle: 'Entity graph analysis, counterparty ledgers, and forensic origin/destination tracking.'
+    },
+    RULES: {
+      breadcrumb: 'Detection Rules',
+      title: 'Detection Rules',
+      subtitle: 'Active heuristic rules, ML decision weights, and automated threshold interceptors.'
+    },
+    ANALYTICS: {
+      breadcrumb: 'Visual Analytics',
+      title: 'Visual Analytics',
+      subtitle: 'Multi-dimensional telemetry, 24-hour liquidity cycle, and risk distribution analysis.'
+    },
+    BATCH: {
+      breadcrumb: 'Batch Upload',
+      title: 'Batch Upload',
+      subtitle: 'High-throughput batch ingest scanner and event auditing pipeline.'
+    }
+  };
+
+  const currentMeta = tabMetadata[currentTab] || tabMetadata.DASHBOARD;
+
   return (
     <div className="carbon-app-layout">
       {/* ==========================================================================
-          1. CLEAN PINNED NAVIGATION SIDEBAR
+          1. SENTINEL NAVIGATION SIDEBAR
           ========================================================================== */}
       <aside className="carbon-sidebar">
         <div className="sidebar-header">
           {/* Brand */}
           <div className="sidebar-brand">
             <div className="brand-emblem">
-              <svg viewBox="0 0 24 24">
+              <svg viewBox="0 0 24 24" width="22" height="22" fill="#344767">
                 <path d="M12 1L3 5v6c0 5.55 3.84 10.74 9 12 5.16-1.26 9-6.45 9-12V5l-9-4zm0 10.99h7c-.53 4.12-3.28 7.79-7 8.94V12H5V6.3l7-3.11v8.8z"/>
               </svg>
             </div>
             <div className="brand-meta">
-              <div className="brand-title-wrap">
-                <span className="brand-title">SENTINEL</span>
-                <span className="brand-badge">IBM CARBON</span>
-              </div>
+              <span className="brand-title">Sentinel</span>
               <span className="brand-subtitle">Online Fraud Detector</span>
             </div>
           </div>
 
-          {/* Simple Navigation Links */}
-          <div className="sidebar-nav-group-label">Monitoring & Investigation</div>
+          <div className="sidebar-divider"></div>
+
+          {/* Navigation Items (Dashboard, Transactions, Entity Network, Detection Rules, Visual Analytics, Batch Upload) */}
           <nav className="sidebar-nav">
             <button
               type="button"
@@ -204,7 +344,9 @@ function App() {
                 <span className="material-symbols-outlined">receipt_long</span>
                 <span>Transactions</span>
               </div>
-              <span className="nav-badge nav-badge-red">{metrics.highRiskCount}</span>
+              {metrics.highRiskCount > 0 && (
+                <span className="nav-badge nav-badge-red">{metrics.highRiskCount}</span>
+              )}
             </button>
 
             <button
@@ -227,7 +369,7 @@ function App() {
                 <span className="material-symbols-outlined">tune</span>
                 <span>Detection Rules</span>
               </div>
-              <span className="nav-badge nav-badge-green">4 Active</span>
+              <span className="nav-badge nav-badge-green">4</span>
             </button>
 
             <button
@@ -250,91 +392,84 @@ function App() {
                 <span className="material-symbols-outlined">upload_file</span>
                 <span>Batch Upload</span>
               </div>
-              <span style={{ fontSize: '9px', color: 'var(--carbon-text-muted)' }}>CSV/JSON</span>
             </button>
           </nav>
         </div>
 
-        {/* Engine Telemetry Footer */}
-        <div className="sidebar-footer">
-          <div className="engine-telemetry-card">
-            <div className="engine-telemetry-header">
-              <span>ML Engine Status</span>
-              <span className="engine-telemetry-latency">18ms</span>
-            </div>
-            <div className="engine-telemetry-model">Random Forest + GraphSAGE</div>
-            <div className="engine-telemetry-node">{transactions.length} Active Records Flowing</div>
-          </div>
+        {/* Sidebar Footer Action */}
+        <div className="sidebar-footer-actions">
+          <button
+            type="button"
+            className="md-btn-upgrade-pro"
+            onClick={() => setIsModalOpen(true)}
+          >
+            Test Transactions
+          </button>
         </div>
       </aside>
 
       {/* ==========================================================================
-          2. TOP HEADER COMMAND BAR
+          2. TOP HEADER / BREADCRUMBS COMMAND BAR
           ========================================================================== */}
       <header className="carbon-header">
         <div className="header-left">
-          <div className="search-command-bar">
-            <span className="material-symbols-outlined">search</span>
+          <div className="md-breadcrumbs-wrap">
+            <div className="md-breadcrumb-trail">
+              <span className="md-breadcrumb-root">Pages</span>
+              <span className="md-breadcrumb-sep">/</span>
+              <span className="md-breadcrumb-current">{currentMeta.breadcrumb}</span>
+            </div>
+            <h1 className="md-page-title">{currentMeta.title}</h1>
+            <p className="md-page-subtitle">{currentMeta.subtitle}</p>
+          </div>
+        </div>
+
+        <div className="header-right">
+          {/* Pill Search Box */}
+          <div className="md-search-bar">
             <input
               type="text"
-              placeholder="Search by Transaction ID, sender, recipient, type..."
+              placeholder="Type here..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
             />
             {searchQuery && (
               <button
                 type="button"
-                style={{ position: 'absolute', right: '10px', top: '50%', transform: 'translateY(-50%)', background: 'transparent', border: 'none', color: 'var(--carbon-text-muted)', cursor: 'pointer' }}
+                className="md-search-clear-btn"
                 onClick={() => setSearchQuery('')}
               >
                 ✕
               </button>
             )}
           </div>
-        </div>
 
-        <div className="header-right">
-          {/* Live Metric Ticker */}
-          <div className="header-metric-ticker">
-            <div className="metric-ticker-item">
-              <span className="metric-ticker-label">Total Monitored</span>
-              <span className="metric-ticker-value">
-                ${(metrics.totalVolume / 1000).toFixed(1)}k
-              </span>
-            </div>
-            <div className="metric-ticker-divider"></div>
-            <div className="metric-ticker-item">
-              <span className="metric-ticker-label">Fraud Blocked</span>
-              <span className="metric-ticker-value highlight-red">
-                ${(metrics.blockedVolume / 1000).toFixed(1)}k
-              </span>
-            </div>
+          {/* Active Dataset Status Pill */}
+          <div className="active-dataset-header-pill" title={`Active Dataset: ${activeDataset.name} (Updated: ${activeDataset.updatedAt}) • Click Reset to restore demo seed`}>
+            <span className="dataset-dot"></span>
+            <span className="dataset-label">Dataset:</span>
+            <span className="dataset-name">{activeDataset.name}</span>
+            <span className="dataset-count">({transactions.length})</span>
+            {activeDataset.source !== 'initial' && (
+              <button
+                type="button"
+                className="btn-header-reset-demo"
+                onClick={handleResetToDemo}
+                title="Reset to default initial demo dataset"
+              >
+                Reset
+              </button>
+            )}
           </div>
 
-          {/* Engine Connectivity Status */}
-          <div className="header-engine-status">
-            <span className={`engine-dot ${backendStatus}`}></span>
-            <span>
-              {backendStatus === 'connected' ? 'Engine Online' : backendStatus === 'offline' ? 'Engine Offline' : 'Checking Engine...'}
-            </span>
-            <button
-              type="button"
-              className="btn-engine-retry"
-              onClick={checkBackendHealth}
-              title="Refresh Engine Connection"
-            >
-              ↻
-            </button>
-          </div>
-
-          {/* Test Transaction Action */}
+          {/* Test Transaction Action Button */}
           <button
             type="button"
-            className="btn-test-action"
+            className="md-btn-online-builder"
             onClick={() => setIsModalOpen(true)}
+            title="Open Interactive Simulator"
           >
-            <span className="material-symbols-outlined" style={{ fontSize: '16px' }}>bolt</span>
-            <span>Test Transaction</span>
+            Test Transaction
           </button>
         </div>
       </header>
@@ -362,6 +497,8 @@ function App() {
         {currentTab === 'DASHBOARD' && (
           <ExecutiveIntelligenceView
             transactions={transactions}
+            activeDataset={activeDataset}
+            onResetToDemo={handleResetToDemo}
             onUpdateStatus={handleUpdateStatus}
             onSelectTxn={setSelectedTxn}
             onNavigateToTab={setCurrentTab}
@@ -372,6 +509,36 @@ function App() {
         {/* TAB 2: TRANSACTIONS (LIVE TRIAGE QUEUE) */}
         {currentTab === 'TRANSACTIONS' && (
           <div className="triage-container">
+            {/* Active Telemetry Stream Bar */}
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', background: 'var(--carbon-surface-container)', padding: '8px 16px', borderRadius: '4px', border: '1px solid var(--carbon-border-subtle)', marginBottom: '10px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '12px' }}>
+                <span className="dataset-dot"></span>
+                <span style={{ fontWeight: 'bold', color: 'var(--carbon-text-primary)' }}>Live Feed Source:</span>
+                <span style={{ fontFamily: 'var(--font-mono)', color: 'var(--carbon-cyan)' }}>{activeDataset.name}</span>
+                <span style={{ color: 'var(--carbon-text-muted)' }}>({transactions.length} records • Synced across all tabs)</span>
+              </div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <button
+                  type="button"
+                  className="btn-sync-tab-jump"
+                  onClick={() => setCurrentTab('BATCH')}
+                  style={{ padding: '3px 8px', fontSize: '11px' }}
+                >
+                  <span className="material-symbols-outlined" style={{ fontSize: '14px' }}>upload_file</span>
+                  <span>Batch Ingest</span>
+                </button>
+                {activeDataset.source !== 'initial' && (
+                  <button
+                    type="button"
+                    className="btn-header-reset-demo"
+                    onClick={handleResetToDemo}
+                  >
+                    Reset Demo
+                  </button>
+                )}
+              </div>
+            </div>
+
             {/* Control Bar: Filters & Bulk Actions */}
             <div className="triage-control-console">
               <div className="filter-pills-row">
@@ -608,6 +775,7 @@ function App() {
         {currentTab === 'ENTITIES' && (
           <EntityDossierView
             transactions={transactions}
+            activeDataset={activeDataset}
             onUpdateStatus={handleUpdateStatus}
             onSelectTxn={setSelectedTxn}
             onShowToast={showNotification}
@@ -618,6 +786,8 @@ function App() {
         {currentTab === 'RULES' && (
           <DetectionRulesView
             transactions={transactions}
+            activeDataset={activeDataset}
+            onUpdateAllTransactions={handleUpdateAllTransactions}
             onNavigateToTab={setCurrentTab}
             onShowToast={showNotification}
           />
@@ -625,12 +795,24 @@ function App() {
 
         {/* TAB 5: VISUAL ANALYTICS */}
         {currentTab === 'ANALYTICS' && (
-          <AnalyticsVisuals transactions={transactions} />
+          <AnalyticsVisuals
+            transactions={transactions}
+            activeDataset={activeDataset}
+            onShowToast={showNotification}
+          />
         )}
 
         {/* TAB 6: BATCH SCANNER */}
         {currentTab === 'BATCH' && (
-          <BatchUploadModal onImportToFeed={handleImportBatch} />
+          <BatchUploadModal
+            currentTransactions={transactions}
+            activeDataset={activeDataset}
+            onBatchAnalyzed={handleBatchAnalyzed}
+            onImportToFeed={handleImportBatch}
+            onNavigateToTab={setCurrentTab}
+            onResetToDemo={handleResetToDemo}
+            onShowToast={showNotification}
+          />
         )}
       </main>
 

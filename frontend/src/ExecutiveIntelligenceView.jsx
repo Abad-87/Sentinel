@@ -2,6 +2,8 @@ import React, { useMemo } from 'react';
 
 const ExecutiveIntelligenceView = ({
   transactions = [],
+  activeDataset,
+  onResetToDemo,
   onUpdateStatus,
   onSelectTxn,
   onNavigateToTab,
@@ -55,151 +57,125 @@ const ExecutiveIntelligenceView = ({
 
   return (
     <div className="exec-container">
-      {/* 1. Top Summary Banner */}
-      <div className="telemetry-banner">
-        <div className="telemetry-stream-status">
-          <div className="telemetry-pill-active">
-            <span className="pulse-dot"></span>
-            <span>SYSTEM ACTIVE • LIVE DATA STREAM</span>
-          </div>
-          <span style={{ fontSize: '12px', color: 'var(--carbon-text-secondary)' }}>
-            Monitoring {stats.totalCount} transactions across payment gateways
+      {/* Telemetry Status Strip */}
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', background: 'var(--carbon-surface-container)', padding: '10px 16px', borderRadius: '8px', border: '1px solid var(--carbon-border-subtle)', marginBottom: '14px', flexWrap: 'wrap', gap: '10px' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+          <span className="dataset-dot"></span>
+          <span style={{ fontSize: '12px', fontWeight: 'bold', color: 'var(--carbon-text-primary)' }}>
+            Active Dataset: {activeDataset?.name || 'Live Dataset'}
+          </span>
+          <span style={{ fontSize: '11px', color: 'var(--carbon-text-muted)' }}>
+            ({stats.totalCount} transactions • Synced across all tabs)
           </span>
         </div>
-
-        <div className="telemetry-actions">
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
           <button
             type="button"
-            className="btn-secondary-action"
-            onClick={() => onNavigateToTab && onNavigateToTab('TRIAGE')}
+            className="btn-sync-tab-jump"
+            onClick={() => onNavigateToTab && onNavigateToTab('BATCH')}
+            style={{ padding: '4px 10px', fontSize: '11px' }}
           >
-            <span className="material-symbols-outlined" style={{ fontSize: '16px' }}>inbox_customize</span>
-            <span>View All Transactions ({stats.totalCount})</span>
+            <span className="material-symbols-outlined" style={{ fontSize: '14px' }}>upload_file</span>
+            <span>Upload & Analyze CSV</span>
           </button>
-          <button
-            type="button"
-            className="btn-test-action"
-            onClick={() => onShowToast && onShowToast('Exported Executive Security Summary (JSON)')}
-          >
-            <span className="material-symbols-outlined" style={{ fontSize: '16px' }}>download</span>
-            <span>Export Report</span>
-          </button>
+          {activeDataset && activeDataset.source !== 'initial' && onResetToDemo && (
+            <button
+              type="button"
+              className="btn-header-reset-demo"
+              onClick={onResetToDemo}
+            >
+              Reset to Demo Seed
+            </button>
+          )}
         </div>
       </div>
 
-      {/* 2. 4-Column KPI Cards (Computed from active transactions) */}
-      <div className="kpi-row-grid">
+      {/* ==========================================================================
+          ROW 1: 4 KPI CARDS (Total Monitored Volume, Fraud Capital Blocked, High Risk Incidents, Detection Precision)
+          ========================================================================== */}
+      <div className="md-kpi-grid">
         {/* KPI 1: Total Monitored Volume */}
-        <div className="carbon-kpi-card">
-          <div className="kpi-card-top">
-            <div className="kpi-card-title-group">
-              <span className="kpi-card-title">Total Monitored Volume</span>
-              <span className="kpi-card-value">
+        <div className="md-stat-card">
+          <div className="md-stat-card-top">
+            <div className="md-stat-info">
+              <span className="md-stat-label">Total Monitored Volume</span>
+              <span className="md-stat-value">
                 ${stats.totalVolume.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
               </span>
             </div>
-            <div className="kpi-icon-box">
-              <span className="material-symbols-outlined" style={{ fontSize: '20px' }}>account_balance</span>
+            <div className="md-stat-icon-box">
+              <span className="material-symbols-outlined">account_balance</span>
             </div>
           </div>
-          <div className="kpi-card-bottom">
-            <div className="kpi-meta-text">
-              <div className="kpi-trend-stat trend-green">
-                <span className="material-symbols-outlined" style={{ fontSize: '16px' }}>check</span>
-                <span>{stats.totalCount} active transactions</span>
-              </div>
-              <span className="kpi-sub-label">Flowing through ML pipeline</span>
-            </div>
-            <svg className="sparkline-svg" fill="none" viewBox="0 0 100 32">
-              <path d="M0 26 L20 22 L40 25 L60 15 L80 18 L100 8" stroke="#0f62fe" strokeWidth="2" strokeLinecap="round" />
-              <path d="M0 26 L20 22 L40 25 L60 15 L80 18 L100 8 L100 32 L0 32 Z" fill="#0f62fe" fillOpacity="0.12" />
-            </svg>
+          <div className="md-stat-card-divider"></div>
+          <div className="md-stat-footer">
+            <span className="md-trend-positive">+{stats.totalCount} active</span>
+            <span className="md-trend-text">flowing through pipeline</span>
           </div>
         </div>
 
-        {/* KPI 2: Fraud Prevented / Blocked */}
-        <div className="carbon-kpi-card">
-          <div className="kpi-card-top">
-            <div className="kpi-card-title-group">
-              <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                <span className="kpi-card-title" style={{ color: 'var(--carbon-red)' }}>Fraud Capital Blocked</span>
-                <span className="kpi-card-tag-critical">BLOCKED</span>
-              </div>
-              <span className="kpi-card-value val-red">
+        {/* KPI 2: Fraud Capital Blocked */}
+        <div className="md-stat-card">
+          <div className="md-stat-card-top">
+            <div className="md-stat-info">
+              <span className="md-stat-label">Fraud Capital Blocked</span>
+              <span className="md-stat-value" style={{ color: 'var(--md-red)' }}>
                 ${stats.blockedVolume.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
               </span>
             </div>
-            <div className="kpi-icon-box icon-red">
-              <span className="material-symbols-outlined" style={{ fontSize: '20px' }}>gpp_maybe</span>
+            <div className="md-stat-icon-box">
+              <span className="material-symbols-outlined">lock</span>
             </div>
           </div>
-          <div className="kpi-card-bottom">
-            <div className="kpi-meta-text">
-              <div className="kpi-trend-stat trend-red">
-                <span className="material-symbols-outlined" style={{ fontSize: '16px' }}>lock</span>
-                <span>{stats.blockedCount} transactions frozen</span>
-              </div>
-              <span className="kpi-sub-label">Prevented from execution</span>
-            </div>
-            <svg className="sparkline-svg" fill="none" viewBox="0 0 100 32">
-              <path d="M0 28 L25 24 L50 25 L75 14 L100 4" stroke="#ef4444" strokeWidth="2" strokeLinecap="round" />
-              <path d="M0 28 L25 24 L50 25 L75 14 L100 4 L100 32 L0 32 Z" fill="#ef4444" fillOpacity="0.15" />
-            </svg>
+          <div className="md-stat-card-divider"></div>
+          <div className="md-stat-footer">
+            <span className="md-trend-negative">{stats.blockedCount} frozen</span>
+            <span className="md-trend-text">prevented from execution</span>
           </div>
         </div>
 
         {/* KPI 3: High Risk Incidents */}
-        <div className="carbon-kpi-card">
-          <div className="kpi-card-top">
-            <div className="kpi-card-title-group">
-              <span className="kpi-card-title">High Risk Incidents</span>
-              <span className="kpi-card-value val-cyan">
-                {stats.highRiskCount} <span style={{ fontSize: '14px', fontWeight: 'normal', color: 'var(--carbon-text-muted)' }}>({stats.highRiskPct}%)</span>
+        <div className="md-stat-card">
+          <div className="md-stat-card-top">
+            <div className="md-stat-info">
+              <span className="md-stat-label">High Risk Incidents</span>
+              <span className="md-stat-value">
+                {stats.highRiskCount} <span style={{ fontSize: '15px', fontWeight: '500', color: 'var(--md-text-secondary)' }}>({stats.highRiskPct}%)</span>
               </span>
             </div>
-            <div className="kpi-icon-box icon-cyan">
-              <span className="material-symbols-outlined" style={{ fontSize: '20px' }}>crisis_alert</span>
+            <div className="md-stat-icon-box">
+              <span className="material-symbols-outlined">warning</span>
             </div>
           </div>
-          <div className="kpi-card-bottom">
-            <div className="kpi-meta-text">
-              <span style={{ fontSize: '11px', color: 'var(--carbon-text-secondary)', fontWeight: '600' }}>
-                {stats.reviewCount} pending human review
-              </span>
-              <span className="kpi-sub-label">{stats.cleanCount} confirmed legitimate</span>
-            </div>
-            <div style={{ width: '40px', height: '6px', background: 'var(--carbon-surface-container-highest)', borderRadius: '3px', overflow: 'hidden' }}>
-              <div style={{ width: `${stats.highRiskPct}%`, height: '100%', background: 'var(--carbon-red)' }}></div>
-            </div>
+          <div className="md-stat-card-divider"></div>
+          <div className="md-stat-footer">
+            <span className="md-trend-negative">{stats.reviewCount} pending</span>
+            <span className="md-trend-text">human review required</span>
           </div>
         </div>
 
-        {/* KPI 4: Automated Interception Accuracy */}
-        <div className="carbon-kpi-card">
-          <div className="kpi-card-top">
-            <div className="kpi-card-title-group">
-              <span className="kpi-card-title">Detection Precision</span>
-              <span className="kpi-card-value val-green">99.1%</span>
+        {/* KPI 4: Detection Precision */}
+        <div className="md-stat-card">
+          <div className="md-stat-card-top">
+            <div className="md-stat-info">
+              <span className="md-stat-label">Detection Precision</span>
+              <span className="md-stat-value" style={{ color: 'var(--md-green)' }}>99.1%</span>
             </div>
-            <div className="kpi-icon-box icon-green">
-              <span className="material-symbols-outlined" style={{ fontSize: '20px' }}>shield_check</span>
+            <div className="md-stat-icon-box">
+              <span className="material-symbols-outlined">shield</span>
             </div>
           </div>
-          <div className="kpi-card-bottom">
-            <div className="kpi-meta-text">
-              <span style={{ fontFamily: 'var(--font-mono)', fontSize: '11px', fontWeight: 'bold', color: 'var(--carbon-green)' }}>
-                18ms Average Latency
-              </span>
-              <span className="kpi-sub-label">Random Forest + GraphSAGE</span>
-            </div>
-            <span style={{ fontSize: '10px', background: 'var(--carbon-surface-container-highest)', color: 'var(--carbon-green)', padding: '2px 6px', borderRadius: '2px', fontWeight: 'bold' }}>
-              ACTIVE
-            </span>
+          <div className="md-stat-card-divider"></div>
+          <div className="md-stat-footer">
+            <span className="md-trend-positive">18ms avg latency</span>
+            <span className="md-trend-text">Random Forest + GraphSAGE</span>
           </div>
         </div>
       </div>
 
-      {/* 3. Middle Section: Fraud Volume Breakdown + Real-Time Alerts */}
+      {/* ==========================================================================
+          ROW 2: OPERATIONAL PANELS (Volume Breakdown & Immediate Action Queue)
+          ========================================================================== */}
       <div className="exec-mid-grid">
         {/* Left: Volume Distribution by Instrument */}
         <div className="carbon-panel">
@@ -219,7 +195,7 @@ const ExecutiveIntelligenceView = ({
                     <span className="type-pill">{item.type}</span>
                     <div>
                       <span className="vector-name">
-                        {item.count} transactions {item.fraudCount > 0 && <span style={{ color: 'var(--carbon-red)', fontSize: '11px' }}>({item.fraudCount} high risk)</span>}
+                        {item.count} transactions {item.fraudCount > 0 && <span style={{ color: 'var(--md-red)', fontSize: '11px', fontWeight: 'bold' }}>({item.fraudCount} high risk)</span>}
                       </span>
                     </div>
                   </div>
@@ -230,7 +206,7 @@ const ExecutiveIntelligenceView = ({
                 </div>
                 <div className="vector-progress-track">
                   <div
-                    className={`vector-progress-fill ${item.fraudCount > 0 ? 'fill-red' : 'fill-blue'}`}
+                    className={`vector-progress-fill ${item.fraudCount > 0 ? 'fill-red' : 'fill-green'}`}
                     style={{ width: `${Math.max(6, item.pct)}%` }}
                   ></div>
                 </div>
@@ -244,7 +220,7 @@ const ExecutiveIntelligenceView = ({
           <div className="panel-header">
             <div className="panel-title-wrap">
               <div className="panel-title">
-                <span className="material-symbols-outlined" style={{ color: 'var(--carbon-red)' }}>warning</span>
+                <span className="material-symbols-outlined" style={{ color: 'var(--md-red)' }}>warning</span>
                 <span>Immediate Action Queue</span>
               </div>
               <span className="panel-subtitle">High Risk or Under Review transactions awaiting compliance decision</span>
@@ -254,7 +230,7 @@ const ExecutiveIntelligenceView = ({
 
           <div className="threat-list">
             {stats.actionableThreats.length === 0 ? (
-              <div style={{ padding: '24px', textAlign: 'center', color: 'var(--carbon-green)', fontSize: '12px' }}>
+              <div style={{ padding: '24px', textAlign: 'center', color: 'var(--md-green)', fontSize: '12px' }}>
                 <span className="material-symbols-outlined" style={{ fontSize: '28px', display: 'block', marginBottom: '4px' }}>task_alt</span>
                 All pending transactions have been processed. Clean stream.
               </div>
@@ -320,9 +296,9 @@ const ExecutiveIntelligenceView = ({
               type="button"
               className="btn-secondary-action"
               style={{ justifyContent: 'center' }}
-              onClick={() => onNavigateToTab && onNavigateToTab('TRIAGE')}
+              onClick={() => onNavigateToTab && onNavigateToTab('TRANSACTIONS')}
             >
-              View all {stats.actionableThreats.length} flagged transactions in Triage →
+              View all {stats.actionableThreats.length} flagged transactions in Transactions →
             </button>
           )}
         </div>

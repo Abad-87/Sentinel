@@ -39,7 +39,13 @@ const defaultRules = [
   }
 ];
 
-const DetectionRulesView = ({ transactions = [], onNavigateToTab, onShowToast }) => {
+const DetectionRulesView = ({
+  transactions = [],
+  activeDataset,
+  onUpdateAllTransactions,
+  onNavigateToTab,
+  onShowToast
+}) => {
   const [rules, setRules] = useState(defaultRules);
 
   // Compute live matches for each rule from the shared transactions state
@@ -69,8 +75,34 @@ const DetectionRulesView = ({ transactions = [], onNavigateToTab, onShowToast })
 
   const handleWeightChange = (id, newWeight) => {
     setRules((prev) =>
-      prev.map((r) => r.id === id ? { ...r, weight: parseInt(newWeight, 10) } : r)
+      prev.map((r) => (r.id === id ? { ...r, weight: parseInt(newWeight, 10) } : r))
     );
+  };
+
+  const handleDeployAndReanalyze = () => {
+    const updated = transactions.map((t) => {
+      const activeMatches = rules.filter((r) => r.enabled && r.check(t));
+      const triggeredFlags = activeMatches.map((r) => r.name);
+      const extraProb = activeMatches.reduce((sum, r) => sum + (r.weight * 0.08), 0);
+      const baseProb = t.fraudProbability || 1.0;
+      const newProb = Math.min(99.9, Math.max(0.5, Math.round((baseProb + extraProb) * 10) / 10));
+      const newRisk = newProb >= 70.0 ? 'High Risk' : newProb >= 40.0 ? 'Medium Risk' : 'Low Risk';
+      const newStatus = newRisk === 'High Risk' && t.status === 'Approved' ? 'Blocked' : t.status;
+
+      return {
+        ...t,
+        anomalyFlags: Array.from(new Set([...(t.anomalyFlags || []), ...triggeredFlags])),
+        fraudProbability: newProb,
+        risk: newRisk,
+        status: newStatus
+      };
+    });
+
+    if (onUpdateAllTransactions) {
+      onUpdateAllTransactions(updated, 'Heuristic Rules Re-evaluation');
+    } else if (onShowToast) {
+      onShowToast(`Re-analyzed ${transactions.length} transactions with deployed rule weights.`);
+    }
   };
 
   return (
@@ -84,15 +116,17 @@ const DetectionRulesView = ({ transactions = [], onNavigateToTab, onShowToast })
           </div>
           <span style={{ fontSize: '12px', color: 'var(--carbon-text-secondary)' }}>
             4 core heuristic rules actively cross-indexing {transactions.length} live transactions
+            {activeDataset && ` from "${activeDataset.name}"`}
           </span>
         </div>
         <button
           type="button"
           className="btn-test-action"
-          onClick={() => onShowToast && onShowToast('Rule sensitivities deployed across inference edge.')}
+          onClick={handleDeployAndReanalyze}
+          title="Re-run heuristic checks on all active transactions and broadcast updated risk telemetry across every tab"
         >
           <span className="material-symbols-outlined" style={{ fontSize: '16px' }}>sync</span>
-          <span>Deploy Rule Weights</span>
+          <span>Deploy Weights & Re-Analyze All Tabs</span>
         </button>
       </div>
 
@@ -157,9 +191,9 @@ const DetectionRulesView = ({ transactions = [], onNavigateToTab, onShowToast })
                     <button
                       type="button"
                       style={{ background: 'transparent', border: 'none', color: 'var(--carbon-blue)', cursor: 'pointer', fontSize: '11px', fontWeight: 'bold' }}
-                      onClick={() => onNavigateToTab && onNavigateToTab('TRIAGE')}
+                      onClick={() => onNavigateToTab && onNavigateToTab('TRANSACTIONS')}
                     >
-                      View in Triage →
+                      View in Live Feed →
                     </button>
                   </div>
                 )}

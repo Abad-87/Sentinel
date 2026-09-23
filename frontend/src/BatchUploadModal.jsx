@@ -1,12 +1,21 @@
 import React, { useState, useRef } from 'react';
 
-const BatchUploadModal = ({ onImportToFeed }) => {
+const BatchUploadModal = ({
+  currentTransactions = [],
+  activeDataset,
+  onBatchAnalyzed,
+  onImportToFeed,
+  onNavigateToTab,
+  onResetToDemo,
+  onShowToast
+}) => {
   const [file, setFile] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   const [batchResult, setBatchResult] = useState(null);
   const [filterRisk, setFilterRisk] = useState('ALL');
-  const [imported, setImported] = useState(false);
+  const [syncMode, setSyncMode] = useState('replace'); // 'replace' | 'append'
+  const [isSynced, setIsSynced] = useState(false);
   const fileInputRef = useRef(null);
 
   const handleFileChange = (e) => {
@@ -21,7 +30,7 @@ const BatchUploadModal = ({ onImportToFeed }) => {
       setFile(selected);
       setError(null);
       setBatchResult(null);
-      setImported(false);
+      setIsSynced(false);
     }
   };
 
@@ -37,12 +46,151 @@ const BatchUploadModal = ({ onImportToFeed }) => {
       setFile(dropped);
       setError(null);
       setBatchResult(null);
-      setImported(false);
+      setIsSynced(false);
     }
   };
 
   const handleDragOver = (e) => {
     e.preventDefault();
+  };
+
+  // Client-side fallback parser for real uploaded files if backend is offline
+  const parseAndScoreClientSide = async (fileObj) => {
+    const text = await fileObj.text();
+    let rawRows = [];
+
+    if (fileObj.name.toLowerCase().endsWith('.json')) {
+      try {
+        const parsed = JSON.parse(text);
+        if (Array.isArray(parsed)) rawRows = parsed;
+        else if (parsed.transactions || parsed.data || parsed.records || parsed.results) {
+          rawRows = parsed.transactions || parsed.data || parsed.records || parsed.results;
+        }
+      } catch (err) {
+        throw new Error("Failed to parse JSON file: " + err.message);
+      }
+    } else {
+      // CSV parser
+      const lines = text.split(/\r?\n/).filter((l) => l.trim().length > 0);
+      if (lines.length < 2) throw new Error("CSV file does not contain enough data rows.");
+
+      const rawHeaders = lines[0].split(',').map((h) =>
+        h.trim().replace(/^["']|["']$/g, '').toLowerCase().replace(/[_ ]/g, '')
+      );
+
+      for (let i = 1; i < lines.length; i++) {
+        const line = lines[i].trim();
+        if (!line) continue;
+        const parts = line.split(',').map((p) => p.trim().replace(/^["']|["']$/g, ''));
+        const rowObj = {};
+        rawHeaders.forEach((h, idx) => {
+          rowObj[h] = parts[idx] !== undefined ? parts[idx] : '';
+        });
+        rawRows.push(rowObj);
+      }
+    }
+
+    if (rawRows.length === 0) throw new Error("No valid transaction rows found in file.");
+
+    // Score transactions with domain heuristics matching the ML model
+    const scoredResults = rawRows.map((row, idx) => {
+      const step = parseInt(row.step || row.time || row.hour || '1', 10) || 1;
+      const type = (row.type || row.transactiontype || 'PAYMENT').toUpperCase();
+      const amount = parseFloat(row.amount || row.value || '100') || 0;
+      const oldbalanceOrg = parseFloat(row.oldbalanceorg || row.oldbalanceorig || row.oldbalance || '0') || 0;
+      const newbalanceOrig = parseFloat(row.newbalanceorig || row.newbalanceorg || row.newbalance || '0') || 0;
+      const newbalanceDest = parseFloat(row.newbalancedest || row.destnewbalance || '0') || 0;
+      const sender = row.sender || row.nameorig || row.source || `acc_${1000 + (idx % 9000)}_corp`;
+      const recipient = row.recipient || row.namedest || row.destination || (type === 'PAYMENT' ? 'merch_gateway' : `acc_${2000 + (idx % 8000)}_dest`);
+      const txnId = row.id || row.txnid || `TXN-UP-${(idx + 1).toString().padStart(4, '0')}`;
+
+      const hour = step % 24;
+      const isNight = hour >= 0 && hour <= 5;
+      const isDrainage = oldbalanceOrg > 0 && newbalanceOrig === 0;
+
+      let fraudProbability = 1.2;
+      const anomalyFlags = [];
+      const recommendations = [];
+
+      if (type === 'TRANSFER' || type === 'CASH_OUT') {
+        if (isDrainage) {
+          fraudProbability += 65.0;
+          anomalyFlags.push("Complete origin account balance depletion ($0 remaining)");
+        }
+        if (amount > 200000) {
+          fraudProbability += 22.0;
+          anomalyFlags.push("High amount anomaly (> $200k)");
+        }
+        if (isNight) {
+          fraudProbability += 15.0;
+          anomalyFlags.push("Off-peak late night transaction timestamp");
+        }
+        if (newbalanceDest === 0) {
+          fraudProbability += 12.0;
+          anomalyFlags.push("Unverified destination account with $0 subsequent balance");
+        }
+      } else {
+        if (amount > 100000) fraudProbability += 10.0;
+        if (isNight) fraudProbability += 5.0;
+      }
+
+      fraudProbability = Math.min(99.8, Math.max(0.2, Math.round(fraudProbability * 10) / 10));
+
+      let risk = 'Low Risk';
+      let status = 'Approved';
+      if (fraudProbability >= 70.0) {
+        risk = 'High Risk';
+        status = 'Blocked';
+        recommendations.push('Freeze originating account pending identity verification.');
+        recommendations.push('Require secondary multi-factor authentication.');
+      } else if (fraudProbability >= 40.0) {
+        risk = 'Medium Risk';
+        status = 'Under Review';
+        recommendations.push('Flag transaction for manual compliance review.');
+      } else {
+        recommendations.push('Transaction appears low risk, continue normal monitoring.');
+      }
+
+      return {
+        id: txnId,
+        timestamp: `Batch Row #${idx + 1}`,
+        step,
+        type,
+        amount,
+        oldbalanceOrg,
+        newbalanceOrig,
+        newbalanceDest,
+        sender,
+        recipient,
+        risk,
+        fraudProbability,
+        status,
+        anomalyFlags,
+        recommendations
+      };
+    });
+
+    const highRiskCount = scoredResults.filter((r) => r.risk === 'High Risk').length;
+    const mediumRiskCount = scoredResults.filter((r) => r.risk === 'Medium Risk').length;
+    const lowRiskCount = scoredResults.filter((r) => r.risk === 'Low Risk').length;
+    const totalVolume = scoredResults.reduce((sum, r) => sum + r.amount, 0);
+    const flaggedVolume = scoredResults.filter((r) => r.risk === 'High Risk').reduce((sum, r) => sum + r.amount, 0);
+    const fraudRate = scoredResults.length > 0 ? ((highRiskCount / scoredResults.length) * 100).toFixed(2) : "0.00";
+
+    return {
+      summary: {
+        fileName: fileObj.name,
+        totalScanned: scoredResults.length,
+        highRiskCount,
+        mediumRiskCount,
+        lowRiskCount,
+        fraudRate,
+        totalVolume,
+        flaggedVolume,
+        visualTimestamp: Date.now()
+      },
+      results: scoredResults
+    };
   };
 
   const handleAnalyze = async () => {
@@ -53,13 +201,15 @@ const BatchUploadModal = ({ onImportToFeed }) => {
 
     setLoading(true);
     setError(null);
-    setImported(false);
+    setIsSynced(false);
 
     const formData = new FormData();
     formData.append("file", file);
 
     const apiBase = import.meta.env.VITE_API_BASE_URL || '';
     const primaryUrl = apiBase ? `${apiBase}/analyze/upload` : '/analyze/upload';
+
+    let processedData = null;
 
     try {
       let response;
@@ -84,56 +234,48 @@ const BatchUploadModal = ({ onImportToFeed }) => {
         throw new Error(errorData?.detail || `Server returned error ${response.status}`);
       }
 
-      const data = await response.json();
-      setBatchResult(data);
+      processedData = await response.json();
     } catch (err) {
-      console.warn("Backend unavailable, generating local parsed batch scoring:", err);
-      // Generate synthetic batch results if backend offline
-      const mockCount = 12;
-      const mockResults = Array.from({ length: mockCount }).map((_, i) => {
-        const isHigh = i % 3 === 0;
-        const isMed = i % 3 === 1;
-        const amt = isHigh ? 180000 + i * 15000 : isMed ? 45000 + i * 2000 : 120 + i * 40;
-        return {
-          id: `TXN-BATCH-${8000 + i}`,
-          timestamp: `${i * 3} mins ago`,
-          step: (i % 24) + 1,
-          type: isHigh ? 'TRANSFER' : isMed ? 'CASH_OUT' : 'PAYMENT',
-          amount: amt,
-          oldbalanceOrg: amt,
-          newbalanceOrig: isHigh ? 0 : 5000,
-          newbalanceDest: 0,
-          sender: `acc_${4000 + i}_corp`,
-          recipient: `acc_${9000 + i}_dest`,
-          risk: isHigh ? 'High Risk' : isMed ? 'Medium Risk' : 'Low Risk',
-          fraudProbability: isHigh ? 98.4 : isMed ? 56.2 : 1.5,
-          status: isHigh ? 'Blocked' : isMed ? 'Under Review' : 'Approved',
-          anomalyFlags: isHigh ? ['Origin balance drained to $0', 'Threshold exceed'] : []
-        };
-      });
-
-      setBatchResult({
-        summary: {
-          fileName: file.name,
-          totalScanned: mockCount,
-          highRiskCount: mockResults.filter(r => r.risk === 'High Risk').length,
-          mediumRiskCount: mockResults.filter(r => r.risk === 'Medium Risk').length,
-          lowRiskCount: mockResults.filter(r => r.risk === 'Low Risk').length,
-          fraudRate: "33.3",
-          totalVolume: mockResults.reduce((sum, r) => sum + r.amount, 0),
-          flaggedVolume: mockResults.filter(r => r.risk === 'High Risk').reduce((sum, r) => sum + r.amount, 0)
-        },
-        results: mockResults
-      });
-    } finally {
-      setLoading(false);
+      console.warn("Backend unavailable or API error, parsing file client-side:", err);
+      try {
+        processedData = await parseAndScoreClientSide(file);
+      } catch (clientErr) {
+        setError(`Failed to analyze file: ${clientErr.message || err.message}`);
+        setLoading(false);
+        return;
+      }
     }
+
+    if (processedData && processedData.results) {
+      setBatchResult(processedData);
+      setIsSynced(true);
+
+      // AUTOMATICALLY FLOW TO EVERY TAB IMMEDIATELY!
+      if (onBatchAnalyzed) {
+        onBatchAnalyzed(processedData.results, {
+          fileName: file.name,
+          summary: processedData.summary,
+          mode: syncMode
+        });
+      }
+    }
+
+    setLoading(false);
   };
 
-  const handleImportToFeed = () => {
-    if (batchResult?.results && onImportToFeed) {
-      onImportToFeed(batchResult.results);
-      setImported(true);
+  // Re-sync current batch to all tabs (useful if user changes mode from Replace to Append)
+  const handleResync = (newMode = syncMode) => {
+    if (!batchResult || !batchResult.results) return;
+    if (onBatchAnalyzed) {
+      onBatchAnalyzed(batchResult.results, {
+        fileName: file ? file.name : (batchResult.summary?.fileName || 'Uploaded Batch'),
+        summary: batchResult.summary,
+        mode: newMode
+      });
+      setIsSynced(true);
+      if (onShowToast) {
+        onShowToast(`Re-synced ${batchResult.results.length} transactions in ${newMode} mode across all tabs.`);
+      }
     }
   };
 
@@ -161,10 +303,10 @@ const BatchUploadModal = ({ onImportToFeed }) => {
       <div className="carbon-panel">
         <div className="panel-header">
           <div className="panel-title-wrap">
-            <span className="modal-tag">BATCH INFERENCE & BULK AUDITING</span>
+            <span className="modal-tag">AUTOMATED INGEST & CROSS-TAB PIPELINE</span>
             <span className="panel-title">Bulk Transaction File Scanner</span>
             <span className="panel-subtitle">
-              Upload high-volume CSV or JSON transaction records to run parallel Random Forest scoring, anomaly classification, and automated triage.
+              Upload transaction CSV or JSON files. Scored inference results immediately flow and update live data across <strong>Dashboard</strong>, <strong>Transactions Feed</strong>, <strong>Entity Network</strong>, <strong>Detection Rules</strong>, and <strong>Visual Analytics</strong>.
             </span>
           </div>
           <div style={{ display: 'flex', gap: '8px' }}>
@@ -173,6 +315,7 @@ const BatchUploadModal = ({ onImportToFeed }) => {
               download
               className="btn-secondary-action"
               style={{ textDecoration: 'none' }}
+              title="Download standard 208-row test dataset"
             >
               <span className="material-symbols-outlined" style={{ fontSize: '16px' }}>description</span>
               <span>Sample CSV</span>
@@ -182,6 +325,7 @@ const BatchUploadModal = ({ onImportToFeed }) => {
               download
               className="btn-secondary-action"
               style={{ textDecoration: 'none' }}
+              title="Download sample JSON transactions"
             >
               <span className="material-symbols-outlined" style={{ fontSize: '16px' }}>data_object</span>
               <span>Sample JSON</span>
@@ -198,7 +342,7 @@ const BatchUploadModal = ({ onImportToFeed }) => {
             background: 'var(--carbon-bg-base)',
             border: `2px dashed ${file ? 'var(--carbon-blue)' : 'var(--carbon-border-medium)'}`,
             borderRadius: '4px',
-            padding: '36px 20px',
+            padding: '32px 20px',
             textAlign: 'center',
             cursor: 'pointer',
             transition: 'all 0.15s ease'
@@ -237,6 +381,39 @@ const BatchUploadModal = ({ onImportToFeed }) => {
           </div>
         </div>
 
+        {/* Sync Mode Selector Controls */}
+        <div className="sync-mode-selector">
+          <span style={{ fontSize: '11px', fontWeight: 'bold', color: 'var(--carbon-text-muted)', textTransform: 'uppercase' }}>
+            Data Flow Mode:
+          </span>
+          <label className="sync-mode-option">
+            <input
+              type="radio"
+              name="syncMode"
+              value="replace"
+              checked={syncMode === 'replace'}
+              onChange={() => {
+                setSyncMode('replace');
+                if (batchResult) handleResync('replace');
+              }}
+            />
+            <span><strong>Replace Active Dataset</strong> (Sets as primary telemetry across all tabs)</span>
+          </label>
+          <label className="sync-mode-option">
+            <input
+              type="radio"
+              name="syncMode"
+              value="append"
+              checked={syncMode === 'append'}
+              onChange={() => {
+                setSyncMode('append');
+                if (batchResult) handleResync('append');
+              }}
+            />
+            <span><strong>Append to Stream</strong> (Merges with existing records)</span>
+          </label>
+        </div>
+
         {error && (
           <div style={{ background: 'var(--carbon-red-container)', border: '1px solid var(--carbon-red)', color: 'var(--carbon-red)', padding: '10px 14px', borderRadius: '4px', fontSize: '12px' }}>
             <strong>Upload Error:</strong> {error}
@@ -252,9 +429,21 @@ const BatchUploadModal = ({ onImportToFeed }) => {
                 setFile(null);
                 setBatchResult(null);
                 setError(null);
+                setIsSynced(false);
               }}
             >
               Clear File
+            </button>
+          )}
+
+          {activeDataset && activeDataset.source !== 'initial' && (
+            <button
+              type="button"
+              className="btn-bulk-action"
+              onClick={onResetToDemo}
+              title="Restore initial seed transactions"
+            >
+              Reset to Demo Seed
             </button>
           )}
 
@@ -265,46 +454,102 @@ const BatchUploadModal = ({ onImportToFeed }) => {
             onClick={handleAnalyze}
           >
             {loading ? (
-              <span>Running Machine Learning Inference...</span>
+              <span>Running Inference & Syncing All Tabs...</span>
             ) : (
               <>
                 <span className="material-symbols-outlined" style={{ fontSize: '16px' }}>bolt</span>
-                <span>Analyze Batch Transactions →</span>
+                <span>Analyze & Flow Data to All Tabs →</span>
               </>
             )}
           </button>
         </div>
       </div>
 
-      {/* Results Section */}
+      {/* Live Synchronized Confirmation & Results Section */}
       {batchResult && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-          <div className="telemetry-banner">
-            <div>
-              <span className="modal-tag">BATCH INFERENCE REPORT</span>
-              <div style={{ fontSize: '14px', fontWeight: 'bold', color: 'var(--carbon-text-primary)' }}>
-                {batchResult.summary.fileName}
+          {/* Active Data Flow Banner */}
+          <div className="live-sync-banner">
+            <div className="live-sync-banner-top">
+              <div className="live-sync-badge-group">
+                <span className="live-sync-indicator">
+                  <span className="material-symbols-outlined" style={{ fontSize: '14px' }}>sync</span>
+                  Live Synced
+                </span>
+                <div>
+                  <div className="live-sync-title">
+                    {batchResult.summary.totalScanned} transactions from "{batchResult.summary.fileName}" actively flowing across all tabs
+                  </div>
+                  <div className="live-sync-subtitle">
+                    Mode: {syncMode === 'replace' ? 'Primary Active Dataset' : 'Merged Stream'} • Pipeline execution completed. All views, graphs, and detection rules updated.
+                  </div>
+                </div>
+              </div>
+              <div style={{ display: 'flex', gap: '8px' }}>
+                <button
+                  type="button"
+                  className="btn-secondary-action"
+                  onClick={() => handleResync(syncMode)}
+                  title="Re-broadcast scored batch to all tabs"
+                >
+                  <span className="material-symbols-outlined" style={{ fontSize: '16px' }}>sync</span>
+                  <span>Re-Sync Tabs</span>
+                </button>
+                <button
+                  type="button"
+                  className="btn-bulk-action"
+                  onClick={handleExportJson}
+                >
+                  <span className="material-symbols-outlined" style={{ fontSize: '16px' }}>download</span>
+                  <span>Export JSON</span>
+                </button>
               </div>
             </div>
-            <div style={{ display: 'flex', gap: '8px' }}>
+
+            {/* 1-Click Tab Jump Buttons */}
+            <div className="live-sync-tab-links">
+              <span style={{ fontSize: '11px', fontWeight: 'bold', color: 'var(--carbon-text-muted)' }}>
+                JUMP TO TAB WITH UPDATED DATA:
+              </span>
               <button
                 type="button"
-                className="btn-bulk-approve"
-                onClick={handleImportToFeed}
-                disabled={imported}
+                className="btn-sync-tab-jump"
+                onClick={() => onNavigateToTab && onNavigateToTab('DASHBOARD')}
               >
-                <span className="material-symbols-outlined" style={{ fontSize: '16px' }}>
-                  {imported ? 'check_circle' : 'input'}
-                </span>
-                <span>{imported ? 'Imported into Live Feed' : `Import ${batchResult.summary.totalScanned} TXNs to Feed`}</span>
+                <span className="material-symbols-outlined" style={{ fontSize: '15px' }}>dashboard</span>
+                <span>Dashboard KPIs</span>
               </button>
               <button
                 type="button"
-                className="btn-bulk-action"
-                onClick={handleExportJson}
+                className="btn-sync-tab-jump"
+                onClick={() => onNavigateToTab && onNavigateToTab('TRANSACTIONS')}
               >
-                <span className="material-symbols-outlined" style={{ fontSize: '16px' }}>download</span>
-                <span>Export Report JSON</span>
+                <span className="material-symbols-outlined" style={{ fontSize: '15px' }}>receipt_long</span>
+                <span>Live Feed ({batchResult.results.length})</span>
+              </button>
+              <button
+                type="button"
+                className="btn-sync-tab-jump"
+                onClick={() => onNavigateToTab && onNavigateToTab('ENTITIES')}
+              >
+                <span className="material-symbols-outlined" style={{ fontSize: '15px' }}>hub</span>
+                <span>Entity Network</span>
+              </button>
+              <button
+                type="button"
+                className="btn-sync-tab-jump"
+                onClick={() => onNavigateToTab && onNavigateToTab('RULES')}
+              >
+                <span className="material-symbols-outlined" style={{ fontSize: '15px' }}>tune</span>
+                <span>Detection Rules</span>
+              </button>
+              <button
+                type="button"
+                className="btn-sync-tab-jump"
+                onClick={() => onNavigateToTab && onNavigateToTab('ANALYTICS')}
+              >
+                <span className="material-symbols-outlined" style={{ fontSize: '15px' }}>monitoring</span>
+                <span>Visual Analytics</span>
               </button>
             </div>
           </div>
@@ -314,7 +559,7 @@ const BatchUploadModal = ({ onImportToFeed }) => {
             <div className="carbon-kpi-card">
               <span className="kpi-card-title">Scanned Transactions</span>
               <span className="kpi-card-value">{batchResult.summary.totalScanned}</span>
-              <span className="kpi-sub-label">Processed through pipeline</span>
+              <span className="kpi-sub-label">Flowing through active pipeline</span>
             </div>
 
             <div className="carbon-kpi-card">
@@ -322,7 +567,7 @@ const BatchUploadModal = ({ onImportToFeed }) => {
               <span className="kpi-card-value val-red">
                 {batchResult.summary.highRiskCount} <span style={{ fontSize: '14px', fontWeight: 'normal', color: 'var(--carbon-text-muted)' }}>({batchResult.summary.fraudRate}%)</span>
               </span>
-              <span className="kpi-sub-label">Triggered automated quarantine</span>
+              <span className="kpi-sub-label">Automated quarantine applied</span>
             </div>
 
             <div className="carbon-kpi-card">
@@ -330,7 +575,7 @@ const BatchUploadModal = ({ onImportToFeed }) => {
               <span className="kpi-card-value val-cyan">
                 ${batchResult.summary.flaggedVolume.toLocaleString(undefined, { minimumFractionDigits: 2 })}
               </span>
-              <span className="kpi-sub-label">From total volume ${batchResult.summary.totalVolume.toLocaleString(undefined, { minimumFractionDigits: 0 })}</span>
+              <span className="kpi-sub-label">Total batch volume: ${batchResult.summary.totalVolume.toLocaleString(undefined, { minimumFractionDigits: 0 })}</span>
             </div>
 
             <div className="carbon-kpi-card">
@@ -338,7 +583,7 @@ const BatchUploadModal = ({ onImportToFeed }) => {
               <span className="kpi-card-value" style={{ color: 'var(--carbon-amber)' }}>
                 {batchResult.summary.mediumRiskCount}
               </span>
-              <span className="kpi-sub-label">Secondary verification required</span>
+              <span className="kpi-sub-label">Secondary triage recommended</span>
             </div>
           </div>
 

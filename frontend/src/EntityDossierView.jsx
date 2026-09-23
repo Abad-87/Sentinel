@@ -1,6 +1,12 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 
-const EntityDossierView = ({ transactions = [], onUpdateStatus, onSelectTxn, onShowToast }) => {
+const EntityDossierView = ({
+  transactions = [],
+  activeDataset,
+  onUpdateStatus,
+  onSelectTxn,
+  onShowToast
+}) => {
   // Extract unique entities (accounts) from transactions
   const entities = useMemo(() => {
     const map = new Map();
@@ -56,6 +62,16 @@ const EntityDossierView = ({ transactions = [], onUpdateStatus, onSelectTxn, onS
 
   // Selected Entity state (defaults to highest risk entity)
   const [selectedEntityId, setSelectedEntityId] = useState(entities[0]?.id || '');
+
+  // Automatically sync to highest risk entity if selected entity is not in active dataset
+  useEffect(() => {
+    if (entities.length > 0) {
+      const exists = entities.some((e) => e.id === selectedEntityId);
+      if (!exists) {
+        setSelectedEntityId(entities[0].id);
+      }
+    }
+  }, [entities, selectedEntityId]);
 
   const activeEntity = useMemo(() => {
     return entities.find((e) => e.id === selectedEntityId) || entities[0] || null;
@@ -128,6 +144,12 @@ const EntityDossierView = ({ transactions = [], onUpdateStatus, onSelectTxn, onS
                 <span>Linked Transactions: {activeEntity.transactions.length}</span>
                 <span>•</span>
                 <span>Total Volume: ${(activeEntity.totalSent + activeEntity.totalReceived).toLocaleString(undefined, { minimumFractionDigits: 2 })}</span>
+                {activeDataset && (
+                  <>
+                    <span>•</span>
+                    <span style={{ color: 'var(--carbon-cyan)' }}>Dataset: {activeDataset.name}</span>
+                  </>
+                )}
               </div>
             </div>
           </div>
@@ -154,10 +176,10 @@ const EntityDossierView = ({ transactions = [], onUpdateStatus, onSelectTxn, onS
           </div>
         </div>
 
-        {/* Quick Entity Selector Chips */}
+        {/* Quick Entity Selector Chips & Full Account Dropdown */}
         <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap', borderTop: '1px solid var(--carbon-border-subtle)', paddingTop: '10px' }}>
-          <span style={{ fontSize: '11px', color: 'var(--carbon-text-muted)', fontWeight: 'bold' }}>SELECT ENTITY:</span>
-          {entities.slice(0, 8).map((entity) => {
+          <span style={{ fontSize: '11px', color: 'var(--carbon-text-muted)', fontWeight: 'bold' }}>TOP ENTITIES:</span>
+          {entities.slice(0, 6).map((entity) => {
             const isSelected = entity.id === activeEntity.id;
             return (
               <button
@@ -174,31 +196,59 @@ const EntityDossierView = ({ transactions = [], onUpdateStatus, onSelectTxn, onS
               </button>
             );
           })}
+
+          {entities.length > 6 && (
+            <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginLeft: 'auto' }}>
+              <span style={{ fontSize: '11px', color: 'var(--carbon-text-muted)', fontWeight: 'bold' }}>
+                All Accounts ({entities.length}):
+              </span>
+              <select
+                value={activeEntity.id}
+                onChange={(e) => setSelectedEntityId(e.target.value)}
+                style={{
+                  padding: '4px 8px',
+                  borderRadius: '4px',
+                  background: 'var(--carbon-surface-container)',
+                  color: 'var(--carbon-text-primary)',
+                  border: '1px solid var(--carbon-border-medium)',
+                  fontFamily: 'var(--font-mono)',
+                  fontSize: '11px',
+                  cursor: 'pointer'
+                }}
+              >
+                {entities.map((e) => (
+                  <option key={e.id} value={e.id}>
+                    {e.id} ({e.highestRisk} • {e.maxProbability}% • {e.transactions.length} txns)
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
         </div>
       </div>
 
       {/* 2. Visual Link Map (Entity -> Counterparties) & Linked Transactions */}
       <div className="dossier-main-grid">
-        {/* Left: Clean Visual Connection Diagram */}
-        <div className="carbon-panel" style={{ padding: '0', overflow: 'hidden' }}>
-          <div style={{ padding: '12px 16px', background: 'var(--carbon-surface-container)', borderBottom: '1px solid var(--carbon-border-subtle)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+        {/* Left: Black High-Tech Visual Connection Diagram */}
+        <div className="carbon-panel counterparty-map-dark" style={{ padding: '0', overflow: 'hidden', backgroundColor: '#090d13', border: '1px solid #1e293b' }}>
+          <div style={{ padding: '12px 16px', background: '#111827', borderBottom: '1px solid #1f2937', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-              <span className="material-symbols-outlined" style={{ color: 'var(--carbon-cyan)' }}>device_hub</span>
-              <span style={{ fontSize: '12px', fontWeight: 'bold', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+              <span className="material-symbols-outlined" style={{ color: '#38bdf8', fontSize: '20px' }}>device_hub</span>
+              <span style={{ fontSize: '12px', fontWeight: 'bold', textTransform: 'uppercase', letterSpacing: '0.05em', color: '#f8fafc' }}>
                 Counterparty Network Map
               </span>
             </div>
-            <span style={{ fontSize: '11px', color: 'var(--carbon-text-muted)', fontFamily: 'var(--font-mono)' }}>
+            <span style={{ fontSize: '11px', color: '#94a3b8', fontFamily: 'var(--font-mono)', background: '#1e293b', padding: '3px 8px', borderRadius: '4px', border: '1px solid #334155' }}>
               {linkedCounterparties.length} Connected Accounts
             </span>
           </div>
 
-          <div className="link-graph-canvas" style={{ height: '340px' }}>
+          <div className="link-graph-canvas" style={{ height: '340px', backgroundColor: '#090d13', border: 'none' }}>
             {/* Background Grid */}
-            <svg className="link-graph-svg" style={{ opacity: 0.15 }}>
+            <svg className="link-graph-svg" style={{ opacity: 0.22 }}>
               <defs>
                 <pattern id="gridPatternDossierClean" width="24" height="24" patternUnits="userSpaceOnUse">
-                  <circle cx="1" cy="1" r="0.75" fill="#8d90a0" />
+                  <circle cx="1" cy="1" r="0.75" fill="#38bdf8" />
                 </pattern>
               </defs>
               <rect width="100%" height="100%" fill="url(#gridPatternDossierClean)" />
@@ -219,9 +269,10 @@ const EntityDossierView = ({ transactions = [], onUpdateStatus, onSelectTxn, onS
                     y1="50%"
                     x2={`${x2}%`}
                     y2={`${y2}%`}
-                    stroke={isHighRisk ? '#ef4444' : '#0f62fe'}
+                    stroke={isHighRisk ? '#ef4444' : '#38bdf8'}
                     strokeWidth="2"
                     strokeDasharray={isHighRisk ? '4 2' : 'none'}
+                    style={{ filter: isHighRisk ? 'drop-shadow(0 0 5px rgba(239, 68, 68, 0.8))' : 'drop-shadow(0 0 5px rgba(56, 189, 248, 0.8))' }}
                   />
                 );
               })}
@@ -232,7 +283,7 @@ const EntityDossierView = ({ transactions = [], onUpdateStatus, onSelectTxn, onS
               <div className={`graph-node-circle ${isHighRisk ? 'node-center' : 'node-escrow'}`}>
                 <span className="material-symbols-outlined" style={{ fontSize: '24px' }}>account_circle</span>
               </div>
-              <span className="graph-node-label" style={{ borderColor: isHighRisk ? 'var(--carbon-red)' : 'var(--carbon-blue)' }}>
+              <span className="graph-node-label" style={{ borderColor: isHighRisk ? '#ef4444' : '#38bdf8', color: '#ffffff', backgroundColor: '#0f172a' }}>
                 {activeEntity.id} (Active)
               </span>
             </div>

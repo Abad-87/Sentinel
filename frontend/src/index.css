@@ -1,53 +1,115 @@
-/* IBM Carbon & Stitch Design Tokens */
+/* ==========================================================================
+   Creative Tim Material Dashboard 2 Design Tokens & Base Theme
+   Clean light theme: #f0f2f5 bg, crisp white cards, charcoal gradients, emerald green charts
+   ========================================================================== */
+
 :root {
-  /* Carbon Dark Theme Palette (Gray 100 / Obsidian) */
-  --carbon-bg-base: #0b0f17;
-  --carbon-surface-dim: #0d141d;
-  --carbon-surface: #111827;
-  --carbon-surface-container-low: #151c25;
-  --carbon-surface-container: #192029;
-  --carbon-surface-container-high: #232a34;
-  --carbon-surface-container-highest: #2e353f;
-  --carbon-surface-bright: #333a44;
+  /* Material Dashboard 2 Color Palette */
+  --md-bg: #f0f2f5;
+  --md-card-bg: #ffffff;
+  --md-surface-alt: #f8f9fa;
+  --md-surface-active: #edf2f7;
 
-  /* Accent & Telemetry Colors */
-  --carbon-blue: #0f62fe;
-  --carbon-blue-hover: #0353e9;
-  --carbon-blue-active: #002d9c;
-  --carbon-blue-subtle: rgba(15, 98, 254, 0.15);
+  /* Typography & Text */
+  --md-text-primary: #344767;
+  --md-text-secondary: #7b809a;
+  --md-text-muted: #8392ab;
+  --md-text-heading: #252f40;
 
-  --carbon-cyan: #06b6d4;
-  --carbon-cyan-subtle: rgba(6, 182, 212, 0.15);
+  /* Borders & Dividers */
+  --md-border: #e9ecef;
+  --md-border-light: #f0f2f5;
+  --md-border-input: #d2d6da;
+  --md-border-active: #344767;
 
-  --carbon-green: #10b981;
-  --carbon-green-subtle: rgba(16, 185, 129, 0.15);
+  /* Charcoal Dark Slate (Sidebar active pill, Stat icon badge, Dark CTA) */
+  --md-dark-gradient: linear-gradient(195deg, #42424a 0%, #191919 100%);
+  --md-dark-hover: linear-gradient(195deg, #323237 0%, #111111 100%);
+  --md-dark-solid: #344767;
 
-  --carbon-red: #ef4444;
-  --carbon-red-container: rgba(239, 68, 68, 0.18);
-  --carbon-red-subtle: rgba(239, 68, 68, 0.12);
+  /* Accent Emerald Green (Charts, Positive KPIs, Safe statuses) */
+  --md-green: #4caf50;
+  --md-green-gradient: linear-gradient(195deg, #66bb6a 0%, #43a047 100%);
+  --md-green-light: #d4edda;
+  --md-green-text: #155724;
 
-  --carbon-amber: #f59e0b;
-  --carbon-amber-subtle: rgba(245, 158, 11, 0.15);
+  /* Accent Material Red (Threats, Alerts, Negative trends) */
+  --md-red: #f44336;
+  --md-red-gradient: linear-gradient(195deg, #ef5350 0%, #e53935 100%);
+  --md-red-light: #f8d7da;
+  --md-red-text: #721c24;
 
-  /* Typography & Structure */
-  --carbon-text-primary: #f9fafb;
-  --carbon-text-secondary: #c3c6d7;
-  --carbon-text-muted: #8d90a0;
-  --carbon-border-subtle: #1f2937;
-  --carbon-border-medium: #374151;
-  --carbon-border-focus: #0f62fe;
+  /* Accent Rose/Pink ("Online Builder" / secondary outline pill) */
+  --md-pink: #e91e63;
+  --md-pink-gradient: linear-gradient(195deg, #ec407a 0%, #d81b60 100%);
+  --md-pink-light: #fce4ec;
+
+  /* Accent Amber/Warning */
+  --md-amber: #fb8c00;
+  --md-amber-gradient: linear-gradient(195deg, #ffa726 0%, #fb8c00 100%);
+  --md-amber-light: #fff3cd;
+  --md-amber-text: #856404;
+
+  /* Accent Blue & Cyan */
+  --md-blue: #1a73e8;
+  --md-cyan: #00acc1;
+
+  /* Shadows */
+  --md-shadow-card: 0 4px 6px -1px rgba(0, 0, 0, 0.07), 0 2px 4px -1px rgba(0, 0, 0, 0.04);
+  --md-shadow-floating: 0 20px 27px 0 rgba(0, 0, 0, 0.05);
+  --md-shadow-dark: 0 4px 20px 0 rgba(0, 0, 0, 0.14), 0 7px 10px -5px rgba(64, 64, 64, 0.4);
+  --md-shadow-green: 0 4px 20px 0 rgba(0, 0, 0, 0.14), 0 7px 10px -5px rgba(76, 175, 80, 0.4);
+  --md-shadow-fab: 0 4px 20px 0 rgba(0, 0, 0, 0.15);
 
   /* Font Stacks */
-  --font-sans: 'Inter', 'IBM Plex Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  --font-sans: 'Roboto', 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
   --font-mono: 'IBM Plex Mono', ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
 
   /* Layout */
-  --sidebar-width: 272px;
-  --header-height: 58px;
+  --sidebar-width: 260px;
+  --header-height: 72px;
 
   /* Transitions */
   --transition-fast: 0.15s cubic-bezier(0.2, 0, 0.38, 0.9);
   --transition-normal: 0.25s cubic-bezier(0.2, 0, 0.38, 0.9);
+
+  /* ==========================================================================
+     Carbon / Stitch variable aliases mapped to Material Dashboard 2
+     Ensures existing nested components render seamlessly with light styling
+     ========================================================================== */
+  --carbon-bg-base: var(--md-bg);
+  --carbon-surface-dim: var(--md-surface-alt);
+  --carbon-surface: var(--md-card-bg);
+  --carbon-surface-container-low: var(--md-card-bg);
+  --carbon-surface-container: var(--md-surface-alt);
+  --carbon-surface-container-high: #f0f2f5;
+  --carbon-surface-container-highest: #e9ecef;
+  --carbon-surface-bright: #ffffff;
+
+  --carbon-blue: var(--md-dark-solid);
+  --carbon-blue-hover: #1e293b;
+  --carbon-blue-active: #0f172a;
+  --carbon-blue-subtle: rgba(52, 71, 103, 0.1);
+
+  --carbon-cyan: var(--md-cyan);
+  --carbon-cyan-subtle: rgba(0, 172, 193, 0.12);
+
+  --carbon-green: var(--md-green);
+  --carbon-green-subtle: rgba(76, 175, 80, 0.12);
+
+  --carbon-red: var(--md-red);
+  --carbon-red-container: rgba(244, 67, 54, 0.12);
+  --carbon-red-subtle: rgba(244, 67, 54, 0.08);
+
+  --carbon-amber: var(--md-amber);
+  --carbon-amber-subtle: rgba(251, 140, 0, 0.12);
+
+  --carbon-text-primary: var(--md-text-primary);
+  --carbon-text-secondary: var(--md-text-secondary);
+  --carbon-text-muted: var(--md-text-muted);
+  --carbon-border-subtle: var(--md-border);
+  --carbon-border-medium: var(--md-border-input);
+  --carbon-border-focus: var(--md-dark-solid);
 }
 
 /* Global Reset */
@@ -58,8 +120,8 @@
 }
 
 html, body {
-  background-color: var(--carbon-bg-base);
-  color: var(--carbon-text-primary);
+  background-color: var(--md-bg);
+  color: var(--md-text-primary);
   font-family: var(--font-sans);
   font-size: 14px;
   line-height: 1.5;
@@ -78,31 +140,31 @@ html, body {
   margin: 0;
   padding: 0;
   text-align: left;
-  border: none;
+  background-color: var(--md-bg);
 }
 
-/* Custom Scrollbar for IBM Carbon Console */
+/* Custom Scrollbar for Material Light Design */
 ::-webkit-scrollbar {
   width: 6px;
   height: 6px;
 }
 
 ::-webkit-scrollbar-track {
-  background: var(--carbon-surface-container-low);
+  background: var(--md-bg);
 }
 
 ::-webkit-scrollbar-thumb {
-  background: var(--carbon-surface-container-highest);
-  border-radius: 3px;
+  background: #c1c7d0;
+  border-radius: 4px;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: var(--carbon-border-medium);
+  background: #a0a7b4;
 }
 
 /* Selection */
 ::selection {
-  background: var(--carbon-blue);
+  background: #344767;
   color: #ffffff;
 }
 
@@ -110,8 +172,12 @@ html, body {
 button {
   font-family: inherit;
   cursor: pointer;
+  border: none;
+  outline: none;
+  background: none;
 }
 
 input, select, textarea {
   font-family: inherit;
+  outline: none;
 }
