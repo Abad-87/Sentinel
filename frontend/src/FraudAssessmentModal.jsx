@@ -16,6 +16,7 @@ const FraudAssessmentModal = ({ isOpen, onClose, onPredictionResult }) => {
   const [error, setError] = useState(null);
   const [localResult, setLocalResult] = useState(null);
   const [createdTxnId, setCreatedTxnId] = useState(null);
+  const [syncMode, setSyncMode] = useState('replace'); // 'replace' | 'append'
 
   useEffect(() => {
     if (localResult && resultRef.current) {
@@ -146,7 +147,7 @@ const FraudAssessmentModal = ({ isOpen, onClose, onPredictionResult }) => {
         if (isTransfer && payload.Amount > 0 && payload.NewbalanceDest === 0) {
           fallbackRecs.push('Review destination account activity.');
         }
-        if (payload.step % 24 <= 5) {
+        if (((payload.step - 1) % 24) <= 5) {
           fallbackRecs.push('Transaction occurred during late-night hours. Apply enhanced transaction verification.');
         }
         if (payload.Amount > 200000) {
@@ -217,8 +218,9 @@ const FraudAssessmentModal = ({ isOpen, onClose, onPredictionResult }) => {
     if (rawPayload.Amount > 100000) {
       anomalyFlags.push('High volume transaction exceeding standard baseline');
     }
-    if (rawPayload.step % 24 < 5) {
-      anomalyFlags.push(`Off-peak night execution (${rawPayload.step % 24}:00 hrs)`);
+    const hourOfDay = ((rawPayload.step - 1) % 24);
+    if (hourOfDay <= 5) {
+      anomalyFlags.push(`Off-peak night execution (${hourOfDay}:00 hrs)`);
     }
 
     const newTxn = {
@@ -245,7 +247,7 @@ const FraudAssessmentModal = ({ isOpen, onClose, onPredictionResult }) => {
 
     setLocalResult(newTxn);
     if (onPredictionResult) {
-      onPredictionResult(apiData, newTxn);
+      onPredictionResult(apiData, newTxn, syncMode);
     }
   };
 
@@ -378,6 +380,43 @@ const FraudAssessmentModal = ({ isOpen, onClose, onPredictionResult }) => {
                   required
                 />
               </div>
+            </div>
+
+            {/* Sync Mode Selector Controls */}
+            <div className="sync-mode-selector">
+              <span style={{ fontSize: '11px', fontWeight: 'bold', color: 'var(--carbon-text-muted)', textTransform: 'uppercase' }}>
+                Data Flow Mode:
+              </span>
+              <label className="sync-mode-option">
+                <input
+                  type="radio"
+                  name="testSyncMode"
+                  value="replace"
+                  checked={syncMode === 'replace'}
+                  onChange={() => {
+                    setSyncMode('replace');
+                    if (localResult && onPredictionResult) {
+                      onPredictionResult(null, localResult, 'replace');
+                    }
+                  }}
+                />
+                <span><strong>Replace Active Dataset</strong> (Sets as primary telemetry across all tabs)</span>
+              </label>
+              <label className="sync-mode-option">
+                <input
+                  type="radio"
+                  name="testSyncMode"
+                  value="append"
+                  checked={syncMode === 'append'}
+                  onChange={() => {
+                    setSyncMode('append');
+                    if (localResult && onPredictionResult) {
+                      onPredictionResult(null, localResult, 'append');
+                    }
+                  }}
+                />
+                <span><strong>Append to Stream</strong> (Merges with existing records)</span>
+              </label>
             </div>
 
             <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px', marginTop: '6px' }}>

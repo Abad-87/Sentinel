@@ -5,21 +5,14 @@ import json
 import pickle
 import time
 from datetime import datetime
+from typing import Literal, Annotated, List, Optional
 import numpy as np
 import pandas as pd
-from typing import Literal, Annotated, List
 from fastapi import FastAPI, HTTPException, UploadFile, File, Body
 from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field, computed_field
-
-# Headless matplotlib
-import matplotlib
-matplotlib.use('Agg')
-import matplotlib.pyplot as plt
-import seaborn as sns
-plt.style.use('ggplot')
 
 # Compatibility shim for scikit-learn unpickling across versions
 try:
@@ -31,12 +24,46 @@ try:
 except Exception:
     pass
 
+# Base directory resolution
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-ROOT_DIR = os.path.abspath(os.path.join(BASE_DIR, '..'))
+if os.path.basename(BASE_DIR).lower() == 'backend':
+    ROOT_DIR = os.path.abspath(os.path.join(BASE_DIR, '..'))
+else:
+    ROOT_DIR = BASE_DIR
+
 OUTPUTS_DIR = os.path.join(ROOT_DIR, 'Outputs')
 FRONTEND_OUTPUTS_DIR = os.path.join(ROOT_DIR, 'frontend', 'public', 'outputs')
-MODEL_PATH = os.path.join(BASE_DIR, 'Model.pkl')
-PREPROCESSOR_PATH = os.path.join(BASE_DIR, 'Preprocessor.pkl')
+
+# Ensure ROOT_DIR and BASE_DIR are in sys.path for clean imports
+for p in [ROOT_DIR, BASE_DIR]:
+    if p not in sys.path:
+        sys.path.insert(0, p)
+
+# Dedicated Analytics & Chart Module
+from Fraud_Analysis import (
+    analyze_online_fraud,
+    analyze_synthetic_fraud,
+    generate_online_fraud_charts,
+    generate_credit_card_charts,
+    get_transaction_summary,
+    get_merchant_category_analytics,
+    get_credit_card_analytics
+)
+
+# Resolve model and preprocessor file paths
+def find_file(filename: str) -> str:
+    candidates = [
+        os.path.join(BASE_DIR, filename),
+        os.path.join(ROOT_DIR, 'backend', filename),
+        os.path.join(ROOT_DIR, filename)
+    ]
+    for c in candidates:
+        if os.path.exists(c):
+            return c
+    return candidates[0]
+
+MODEL_PATH = find_file('Model.pkl')
+PREPROCESSOR_PATH = find_file('Preprocessor.pkl')
 
 with open(MODEL_PATH, 'rb') as f:
     model = pickle.load(f)
@@ -58,9 +85,10 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Serve generated visual charts from Outputs/
-if os.path.exists(OUTPUTS_DIR):
-    app.mount("/outputs", StaticFiles(directory=OUTPUTS_DIR), name="outputs")
+# Ensure outputs directory exists and mount static route
+os.makedirs(OUTPUTS_DIR, exist_ok=True)
+app.mount("/outputs", StaticFiles(directory=OUTPUTS_DIR), name="outputs")
+
 
 class UserInput(BaseModel):
     step: Annotated[int, Field(..., ge=1, le=743, description='Unit of time (1 Step = 1 hour)')]
@@ -78,7 +106,8 @@ class UserInput(BaseModel):
     @computed_field
     @property
     def hour(self) -> int:
-        return self.step % 24
+        # Standardized 24-hour cycle: (step - 1) % 24
+        return (self.step - 1) % 24
 
     @computed_field
     @property
@@ -105,14 +134,16 @@ class UserInput(BaseModel):
     def newbalanceDest(self) -> float:
         return float(np.log1p(self.NewbalanceDest))
 
-def get_recommendations(step: int, txn_type: str, amount: float, old_balance: float, new_dest: float, output: str):
+
+def get_recommendations(step: int, txn_type: str, amount: float, old_balance: float, new_dest: float, output: str) -> List[str]:
     recommendations = []
+    hour_of_day = (step - 1) % 24
 
     if output in {"High Risk", "Medium Risk"}:
         if txn_type in {"TRANSFER", "CASH_OUT"} and amount > 0 and new_dest == 0:
             recommendations.append('Review destination account activity.')
 
-        if step % 24 in {0, 1, 2, 3, 4, 5}:
+        if hour_of_day in {0, 1, 2, 3, 4, 5}:
             recommendations.append('Transaction occurred during late-night hours. Apply enhanced transaction verification.')
 
         if amount > 200000:
@@ -128,186 +159,6 @@ def get_recommendations(step: int, txn_type: str, amount: float, old_balance: fl
 
     return recommendations
 
-def run_fraud_analysis_visual_code(df: pd.DataFrame):
-    """
-    Executes the exact plotting and visualization code from Fraud_Analysis.py
-    on the given dataframe and saves updated PNG charts to Outputs/ and frontend/public/outputs/.
-    """
-    output_dirs = [OUTPUTS_DIR, FRONTEND_OUTPUTS_DIR]
-    for d in output_dirs:
-        if d and not os.path.exists(d):
-            os.makedirs(d, exist_ok=True)
-
-    work_df = df.copy()
-
-    # Standardize column names
-    col_rename = {}
-    for c in work_df.columns:
-        cl = str(c).strip().lower()
-        if cl in ['step', 'time']: col_rename[c] = 'step'
-        elif cl in ['type', 'transactiontype']: col_rename[c] = 'type'
-        elif cl in ['amount', 'value']: col_rename[c] = 'amount'
-        elif cl in ['isfraud', 'is_fraud']: col_rename[c] = 'isFraud'
-        elif cl in ['oldbalanceorg', 'oldbalanceorig']: col_rename[c] = 'oldbalanceOrg'
-        elif cl in ['newbalanceorig', 'newbalanceorg']: col_rename[c] = 'newbalanceOrig'
-        elif cl in ['newbalancedest', 'destnewbalance']: col_rename[c] = 'newbalanceDest'
-        elif cl in ['oldbalancedest', 'destoldbalance']: col_rename[c] = 'oldbalanceDest'
-    work_df = work_df.rename(columns=col_rename)
-
-    if 'isFraud' not in work_df.columns:
-        if 'risk' in work_df.columns:
-            work_df['isFraud'] = (work_df['risk'] == 'High Risk').astype(int)
-        elif 'fraudProbability' in work_df.columns:
-            work_df['isFraud'] = (pd.to_numeric(work_df['fraudProbability'], errors='coerce') >= 70).astype(int)
-        else:
-            work_df['isFraud'] = 0
-    else:
-        work_df['isFraud'] = pd.to_numeric(work_df['isFraud'], errors='coerce').fillna(0).astype(int)
-
-    generated_charts = []
-
-    if 'step' in work_df.columns and 'type' in work_df.columns:
-        work_df['step'] = pd.to_numeric(work_df['step'], errors='coerce').fillna(1).astype(int)
-        work_df['hour_of_day'] = (work_df['step'] - 1) % 24
-
-        type_data = work_df.groupby('type', observed=False).agg(
-            total_tx=('isFraud', 'count'),
-            fraud_tx=('isFraud', 'sum')
-        ).reset_index()
-        type_data['fraud_rate_pct'] = (type_data['fraud_tx'] / np.maximum(1, type_data['total_tx'])) * 100
-
-        hourly_data = work_df.groupby('hour_of_day').agg(
-            total_tx=('isFraud', 'count'),
-            fraud_tx=('isFraud', 'sum')
-        ).reset_index()
-
-        full_hours = pd.DataFrame({'hour_of_day': range(24)})
-        hourly_data = full_hours.merge(hourly_data, on='hour_of_day', how='left').fillna(0)
-
-        # CHART 1: Total Transactions by Type
-        try:
-            plt.figure(figsize=(8, 5))
-            sns.barplot(data=type_data, x='type', y='total_tx', hue='type', palette='Blues_d', legend=False)
-            if (type_data['total_tx'] > 0).any():
-                plt.yscale('log')
-            plt.title('Total Transactions by Type (Log Scale)')
-            plt.xlabel('Transaction Type')
-            plt.ylabel('Total Transactions (Log Scale)')
-            for index, row in type_data.iterrows():
-                plt.text(index, max(1, row['total_tx']), f"{int(row['total_tx']):,}", ha='center', va='bottom', fontsize=8)
-            plt.tight_layout()
-            for d in output_dirs:
-                if d and os.path.exists(d):
-                    plt.savefig(os.path.join(d, 'Transaction_types.png'), dpi=200)
-            plt.close()
-            generated_charts.append('Transaction_types.png')
-        except Exception as e:
-            print("Error chart 1:", e)
-            plt.close()
-
-        # CHART 2: Fraud Rate by Transaction Type
-        try:
-            plt.figure(figsize=(8, 5))
-            sns.barplot(data=type_data, x='type', y='fraud_rate_pct', hue='type', palette='Reds_d', legend=False)
-            plt.title('Fraud Rate by Transaction Type')
-            plt.xlabel('Transaction Type')
-            plt.ylabel('Fraud Rate (%)')
-            for index, row in type_data.iterrows():
-                if row['fraud_rate_pct'] > 0:
-                    plt.text(index, row['fraud_rate_pct'], f"{row['fraud_rate_pct']:.2f}%", ha='center', va='bottom', fontsize=9)
-            plt.tight_layout()
-            for d in output_dirs:
-                if d and os.path.exists(d):
-                    plt.savefig(os.path.join(d, 'Fraud_rate_by_type.png'), dpi=200)
-            plt.close()
-            generated_charts.append('Fraud_rate_by_type.png')
-        except Exception as e:
-            print("Error chart 2:", e)
-            plt.close()
-
-        # CHART 3: Hourly Fraud Trend - 24 Hr Cycle
-        try:
-            plt.figure(figsize=(9, 5))
-            plt.plot(hourly_data['hour_of_day'], hourly_data['fraud_tx'], marker='o', color='red', linewidth=2)
-            plt.title('Fraud Cases by Hour of Day (0 to 23)')
-            plt.xlabel('Hour of Day (24-Hour Format)')
-            plt.ylabel('Number of Fraud Cases')
-            plt.xticks(range(0, 24))
-            plt.grid(True)
-            plt.tight_layout()
-            for d in output_dirs:
-                if d and os.path.exists(d):
-                    plt.savefig(os.path.join(d, 'Hourly_fraud_trend.png'), dpi=200)
-            plt.close()
-            generated_charts.append('Hourly_fraud_trend.png')
-        except Exception as e:
-            print("Error chart 3:", e)
-            plt.close()
-
-        # CHART 4: Feature Correlation Heatmap
-        num_cols = [c for c in ['amount', 'oldbalanceOrg', 'newbalanceOrig', 'newbalanceDest', 'isFraud'] if c in work_df.columns]
-        if len(num_cols) >= 2:
-            try:
-                corr_matrix = work_df[num_cols].apply(pd.to_numeric, errors='coerce').fillna(0).corr()
-                plt.figure(figsize=(8, 6))
-                sns.heatmap(corr_matrix, annot=True, fmt='.2f', cmap='coolwarm', vmin=-1, vmax=1)
-                plt.title('Feature Correlation Heatmap (Updated Telemetry)')
-                plt.tight_layout()
-                for d in output_dirs:
-                    if d and os.path.exists(d):
-                        plt.savefig(os.path.join(d, 'Balance_correlation_heatmap.png'), dpi=200)
-                plt.close()
-                generated_charts.append('Balance_correlation_heatmap.png')
-            except Exception as e:
-                print("Error chart 4:", e)
-                plt.close()
-
-        # CHART 5: Amount Distribution - Fraud vs Legit
-        if 'amount' in work_df.columns and len(work_df) > 1:
-            try:
-                work_df['log_amount'] = np.log1p(pd.to_numeric(work_df['amount'], errors='coerce').fillna(0).clip(lower=0))
-                plt.figure(figsize=(8, 5))
-                sns.histplot(data=work_df, x='log_amount', hue='isFraud', kde=True,
-                             palette=['skyblue', 'red'], element='step', stat='density', common_norm=False)
-                plt.title('Transaction Amount Distribution: Fraud vs Legit (Log Scale)')
-                plt.xlabel('Log(Amount + 1)')
-                plt.ylabel('Density')
-                plt.tight_layout()
-                for d in output_dirs:
-                    if d and os.path.exists(d):
-                        plt.savefig(os.path.join(d, 'Amount_distribution.png'), dpi=200)
-                plt.close()
-                generated_charts.append('Amount_distribution.png')
-            except Exception as e:
-                print("Error chart 5:", e)
-                plt.close()
-
-    # Credit card charts if merchant_category present
-    if 'merchant_category' in work_df.columns:
-        try:
-            merchant_data = work_df.groupby('merchant_category').agg(
-                total_tx=('isFraud', 'count'),
-                fraud_tx=('isFraud', 'sum')
-            ).reset_index()
-            merchant_data['fraud_rate_pct'] = (merchant_data['fraud_tx'] / np.maximum(1, merchant_data['total_tx'])) * 100
-            merchant_data = merchant_data.sort_values('fraud_rate_pct', ascending=False)
-            plt.figure(figsize=(9, 5))
-            sns.barplot(data=merchant_data, x='merchant_category', y='fraud_rate_pct', hue='merchant_category', palette='Reds_r', legend=False)
-            plt.title('Fraud Rate (%) Across Merchant Categories')
-            plt.xlabel('Merchant Category')
-            plt.ylabel('Fraud Rate (%)')
-            plt.xticks(rotation=40, ha='right')
-            plt.tight_layout()
-            for d in output_dirs:
-                if d and os.path.exists(d):
-                    plt.savefig(os.path.join(d, 'Merchant_category_fraud.png'), dpi=200)
-            plt.close()
-            generated_charts.append('Merchant_category_fraud.png')
-        except Exception as e:
-            print("Error merchant chart:", e)
-            plt.close()
-
-    return generated_charts
 
 @app.get('/')
 @app.get('/health')
@@ -318,6 +169,7 @@ def health_check():
         "version": "1.2.0",
         "features": ["single_prediction", "batch_upload_csv_json", "visual_analytics", "dynamic_visual_regeneration"]
     }
+
 
 @app.get('/analytics/visuals')
 def get_visuals_metadata():
@@ -335,7 +187,7 @@ def get_visuals_metadata():
             "title": "Hourly Fraud Cases (24-Hour Cycle)",
             "file": "/outputs/Hourly_fraud_trend.png",
             "category": "Temporal Dynamics",
-            "highlight": "Fraud surges during night/early morning hours (Steps % 24 between 0 to 5 AM).",
+            "highlight": "Fraud surges during night/early morning hours ((step - 1) % 24 between 0 to 5 AM).",
             "description": "Legitimate transactions follow daylight business hours, while fraudulent account takeover and wire drain activities peak in late night windows."
         },
         {
@@ -405,17 +257,23 @@ def get_visuals_metadata():
     ]
     return visuals
 
+
 @app.post('/analytics/regenerate-from-data')
 def regenerate_visuals_from_data(transactions: List[dict] = Body(...)):
     """
-    Takes transaction records from the frontend, executes the plotting logic
-    from Fraud_Analysis.py, and regenerates the PNG charts in real time.
+    Takes transaction records from the frontend, converts to DataFrame, and delegates
+    chart generation to Fraud_Analysis.py.
     """
     if not transactions:
         raise HTTPException(status_code=400, detail="No transaction records provided.")
 
     df = pd.DataFrame(transactions)
-    charts = run_fraud_analysis_visual_code(df)
+    target_dirs = [OUTPUTS_DIR, FRONTEND_OUTPUTS_DIR]
+
+    charts = generate_online_fraud_charts(df, output_dirs=target_dirs)
+    if 'merchant_category' in df.columns:
+        cc_charts = generate_credit_card_charts(df, output_dirs=target_dirs)
+        charts.extend(cc_charts)
 
     timestamp = int(time.time())
     return {
@@ -425,6 +283,7 @@ def regenerate_visuals_from_data(transactions: List[dict] = Body(...)):
         "totalRecordsAnalyzed": len(df),
         "generatedCharts": charts
     }
+
 
 @app.post('/predict')
 def predict(data: UserInput):
@@ -458,16 +317,13 @@ def predict(data: UserInput):
             "Prediction": output,
             "Fraud_probability": fraud_probability,
             "Recommendation_Actions to be taken": recommendations,
-            "prediction": output,
-            "fraud_probability": fraud_probability,
-            "recommendations": recommendations,
-            "reasons": recommendations
         }
 
         return JSONResponse(status_code=200, content=result)
 
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Internal Server Error: {str(e)}")
+
 
 @app.post('/analyze/upload')
 async def analyze_batch_upload(file: UploadFile = File(...)):
@@ -526,7 +382,8 @@ async def analyze_batch_upload(file: UploadFile = File(...)):
         df['type'] = df['type'].apply(lambda x: x if x in valid_types else 'PAYMENT')
 
         orig_balance_error = df['oldbalanceOrg'] - df['amount'] - df['newbalanceOrig']
-        hour = df['step'] % 24
+        # Standardized 24-hour cycle everywhere: (step - 1) % 24
+        hour = (df['step'] - 1) % 24
         is_night = ((hour >= 0) & (hour <= 5)).astype(int)
 
         df_features = pd.DataFrame({
@@ -577,10 +434,14 @@ async def analyze_batch_upload(file: UploadFile = File(...)):
             recs = get_recommendations(row_step, row_type, row_amt, row_old, row_new_dest, risk)
 
             flags = []
-            if row_amt > 200000: flags.append("High amount anomaly (> $200k)")
-            if row_old > 0 and row_new_orig == 0: flags.append("Complete origin account balance depletion ($0 remaining)")
-            if row_step % 24 <= 5: flags.append("Off-peak late night transaction timestamp")
-            if row_type in ['TRANSFER', 'CASH_OUT'] and row_new_dest == 0: flags.append("Unverified destination account with $0 subsequent balance")
+            if row_amt > 200000:
+                flags.append("High amount anomaly (> $200k)")
+            if row_old > 0 and row_new_orig == 0:
+                flags.append("Complete origin account balance depletion ($0 remaining)")
+            if (row_step - 1) % 24 <= 5:
+                flags.append("Off-peak late night transaction timestamp")
+            if row_type in ['TRANSFER', 'CASH_OUT'] and row_new_dest == 0:
+                flags.append("Unverified destination account with $0 subsequent balance")
 
             risks.append(risk)
             statuses.append(status)
@@ -619,30 +480,28 @@ async def analyze_batch_upload(file: UploadFile = File(...)):
                 "recommendations": df['recommendations'].iloc[i]
             })
 
-        # Automatically execute Fraud_Analysis.py visual plotting code on this new uploaded dataset!
+        # Generate updated analytics charts via Fraud_Analysis module
+        target_dirs = [OUTPUTS_DIR, FRONTEND_OUTPUTS_DIR]
         try:
-            charts_updated = run_fraud_analysis_visual_code(df)
+            charts_updated = generate_online_fraud_charts(df, output_dirs=target_dirs)
+            if 'merchant_category' in df.columns:
+                charts_updated.extend(generate_credit_card_charts(df, output_dirs=target_dirs))
         except Exception as plot_err:
             print("Visual plotting warning:", plot_err)
             charts_updated = []
 
-        total_scanned = len(results)
-        high_risk_count = sum(1 for r in results if r['risk'] == 'High Risk')
-        medium_risk_count = sum(1 for r in results if r['risk'] == 'Medium Risk')
-        low_risk_count = sum(1 for r in results if r['risk'] == 'Low Risk')
-        total_volume = round(float(df['amount'].sum()), 2)
-        flagged_volume = round(float(df[df['risk'] == 'High Risk']['amount'].sum()), 2)
-        fraud_rate = round((high_risk_count / total_scanned) * 100, 2) if total_scanned > 0 else 0.0
+        # Compute summary KPIs using Fraud_Analysis
+        kpi_summary = get_transaction_summary(df)
 
         summary = {
             "fileName": file.filename,
-            "totalScanned": total_scanned,
-            "highRiskCount": high_risk_count,
-            "mediumRiskCount": medium_risk_count,
-            "lowRiskCount": low_risk_count,
-            "fraudRate": fraud_rate,
-            "totalVolume": total_volume,
-            "flaggedVolume": flagged_volume,
+            "totalScanned": kpi_summary["totalScanned"],
+            "highRiskCount": kpi_summary["highRiskCount"],
+            "mediumRiskCount": kpi_summary["mediumRiskCount"],
+            "lowRiskCount": kpi_summary["lowRiskCount"],
+            "fraudRate": kpi_summary["fraudRate"],
+            "totalVolume": kpi_summary["totalVolume"],
+            "flaggedVolume": kpi_summary["flaggedVolume"],
             "chartsUpdated": charts_updated,
             "visualTimestamp": int(time.time())
         }
@@ -656,6 +515,7 @@ async def analyze_batch_upload(file: UploadFile = File(...)):
         raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to process batch file: {str(e)}")
+
 
 if __name__ == '__main__':
     import uvicorn

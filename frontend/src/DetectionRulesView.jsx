@@ -24,7 +24,7 @@ const defaultRules = [
     code: "#R-03",
     name: "Off-Peak Night Hours Activity (00:00 – 05:00)",
     desc: "Flags anomalous transactions occurring during late-night account drainage windows.",
-    check: (t) => (t.step % 24) < 5,
+    check: (t) => (((t.step - 1) % 24 + 24) % 24) < 5,
     weight: 75,
     enabled: true
   },

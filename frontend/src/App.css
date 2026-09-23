@@ -1984,6 +1984,27 @@
   color: #ffffff;
 }
 
+.btn-quick-delete {
+  background-color: transparent;
+  color: var(--carbon-text-muted);
+  border: 1px solid var(--carbon-border-subtle);
+  font-size: 11px;
+  font-weight: 600;
+  padding: 3px 6px;
+  border-radius: 3px;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition: all var(--transition-fast);
+}
+
+.btn-quick-delete:hover {
+  background-color: var(--carbon-red-container);
+  color: var(--carbon-red);
+  border-color: rgba(244, 67, 54, 0.4);
+}
+
 /* ==========================================================================
    FORENSIC ENTITY DOSSIER & LINK GRAPH VIEW
    ========================================================================== */
@@ -3158,4 +3179,195 @@
   background: #0f62fe;
   color: #ffffff;
   border-color: #0f62fe;
+}
+
+/* Bulk Delete & Clear History Buttons */
+.btn-bulk-delete {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  background-color: var(--carbon-red-container);
+  color: var(--carbon-red);
+  border: 1px solid rgba(244, 67, 54, 0.35);
+  font-size: 12px;
+  font-weight: 600;
+  padding: 5px 12px;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+
+.btn-bulk-delete:hover:not(:disabled) {
+  background-color: var(--carbon-red);
+  color: #ffffff;
+  border-color: var(--carbon-red);
+  box-shadow: 0 2px 6px rgba(244, 67, 54, 0.3);
+}
+
+.btn-bulk-clear-all {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  background-color: var(--carbon-surface-container);
+  color: var(--carbon-text-secondary);
+  border: 1px dashed var(--carbon-border-medium);
+  font-size: 12px;
+  font-weight: 600;
+  padding: 5px 12px;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+
+.btn-bulk-clear-all:hover {
+  background-color: var(--carbon-red-container);
+  color: var(--carbon-red);
+  border-style: solid;
+  border-color: rgba(244, 67, 54, 0.4);
+}
+
+.btn-clear-history {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  background-color: var(--carbon-surface-container);
+  color: var(--carbon-text-secondary);
+  border: 1px solid var(--carbon-border-medium);
+  border-radius: 4px;
+  padding: 4px 10px;
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+
+.btn-clear-history:hover {
+  background-color: var(--carbon-red-container);
+  color: var(--carbon-red);
+  border-color: rgba(244, 67, 54, 0.4);
+}
+
+/* Inspector Modal Delete Record Button */
+.btn-modal-delete {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background-color: var(--carbon-surface-container);
+  color: var(--carbon-red);
+  border: 1px solid rgba(244, 67, 54, 0.35);
+  padding: 7px 14px;
+  border-radius: 4px;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all var(--transition-fast);
+  margin-right: auto;
+}
+
+.btn-modal-delete:hover {
+  background-color: var(--carbon-red);
+  color: #ffffff;
+  border-color: var(--carbon-red);
+  box-shadow: 0 2px 6px rgba(244, 67, 54, 0.3);
+}
+
+/* Empty History State Card */
+.empty-history-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 48px 24px;
+  text-align: center;
+  background-color: var(--carbon-surface-container-low);
+  border-radius: 8px;
+}
+
+.empty-history-state .empty-icon {
+  font-size: 48px;
+  color: var(--carbon-text-muted);
+  margin-bottom: 12px;
+  opacity: 0.7;
+}
+
+.empty-history-state h4 {
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--carbon-text-primary);
+  margin-bottom: 6px;
+}
+
+.empty-history-state p {
+  font-size: 13px;
+  color: var(--carbon-text-secondary);
+  max-width: 480px;
+  margin-bottom: 20px;
+  line-height: 1.5;
+}
+
+.empty-state-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  justify-content: center;
+}
+
+.btn-empty-reset {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: var(--md-dark-gradient, #344767);
+  color: #ffffff;
+  border: none;
+  padding: 8px 16px;
+  border-radius: 6px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+
+.btn-empty-reset:hover {
+  box-shadow: 0 4px 12px rgba(52, 71, 103, 0.25);
+  transform: translateY(-1px);
+}
+
+.btn-empty-test {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background-color: var(--carbon-surface-bright);
+  color: var(--carbon-cyan);
+  border: 1px solid var(--carbon-cyan);
+  padding: 8px 16px;
+  border-radius: 6px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+
+.btn-empty-test:hover {
+  background-color: var(--carbon-cyan);
+  color: #ffffff;
+}
+
+.btn-empty-batch {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background-color: var(--carbon-surface-container);
+  color: var(--carbon-text-primary);
+  border: 1px solid var(--carbon-border-medium);
+  padding: 8px 16px;
+  border-radius: 6px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+
+.btn-empty-batch:hover {
+  background-color: var(--carbon-surface-container-high);
 }

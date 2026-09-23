@@ -104,15 +104,40 @@ function App() {
   };
 
   // When new transaction is scored via Simulator modal
-  const handlePredictionResult = (result, newTxn) => {
-    if (newTxn) {
-      setTransactions((prev) => [newTxn, ...prev]);
-      setActiveDataset((prev) => ({
-        ...prev,
-        totalCount: prev.totalCount + 1,
-        updatedAt: new Date().toLocaleTimeString()
-      }));
-      showNotification(`Added transaction ${newTxn.id} scored as ${newTxn.risk} (${newTxn.fraudProbability}%) across all tabs.`);
+  const handlePredictionResult = (result, newTxn, mode = 'replace') => {
+    if (!newTxn) return;
+
+    if (mode === 'replace') {
+      setTransactions([newTxn]);
+      setActiveDataset({
+        name: `Test Txn: ${newTxn.id}`,
+        source: 'simulator',
+        updatedAt: new Date().toLocaleTimeString(),
+        totalCount: 1
+      });
+      setSelectedTxnIds(new Set());
+      showNotification(`✨ Active dataset replaced: ${newTxn.id} (${newTxn.risk}, ${newTxn.fraudProbability}%) is now primary telemetry across all tabs.`);
+    } else {
+      setTransactions((prev) => {
+        const baseList = (activeDataset.source === 'simulator' && prev.length === 1 && prev[0].id === newTxn.id)
+          ? initialTransactions
+          : prev;
+        const exists = baseList.some(t => t.id === newTxn.id);
+        const merged = exists ? baseList : [newTxn, ...baseList];
+        return merged;
+      });
+      setActiveDataset((prev) => {
+        const baseSource = (prev.source === 'simulator') ? 'initial' : prev.source;
+        const baseCount = (prev.source === 'simulator') ? initialTransactions.length : (prev.totalCount || 0);
+        return {
+          ...prev,
+          name: prev.source === 'simulator' ? 'Default Demo Dataset (Simulated Merged)' : (prev.name || 'Live Telemetry Stream'),
+          source: baseSource,
+          totalCount: baseCount + 1,
+          updatedAt: new Date().toLocaleTimeString()
+        };
+      });
+      showNotification(`Added transaction ${newTxn.id} scored as ${newTxn.risk} (${newTxn.fraudProbability}%) merged into stream across all tabs.`);
     }
   };
 
@@ -219,6 +244,78 @@ function App() {
     );
     showNotification(`Approved ${selectedTxnIds.size} transactions.`);
     setSelectedTxnIds(new Set());
+  };
+
+  // Delete a single transaction by ID
+  const handleDeleteSingleTxn = (id) => {
+    setTransactions((prev) => {
+      const updated = prev.filter((t) => t.id !== id);
+      setActiveDataset((d) => ({
+        ...d,
+        updatedAt: new Date().toLocaleTimeString(),
+        totalCount: updated.length
+      }));
+      return updated;
+    });
+    setSelectedTxnIds((prev) => {
+      if (prev.has(id)) {
+        const next = new Set(prev);
+        next.delete(id);
+        return next;
+      }
+      return prev;
+    });
+    if (selectedTxn && selectedTxn.id === id) {
+      setSelectedTxn(null);
+    }
+    showNotification(`Deleted transaction record ${id}.`);
+  };
+
+  // Delete all selected transactions
+  const handleDeleteSelected = () => {
+    if (selectedTxnIds.size === 0) {
+      showNotification('Please select at least one transaction to delete.');
+      return;
+    }
+    const count = selectedTxnIds.size;
+    if (!window.confirm(`Are you sure you want to permanently delete ${count} selected transaction record${count > 1 ? 's' : ''}?`)) {
+      return;
+    }
+    setTransactions((prev) => {
+      const updated = prev.filter((t) => !selectedTxnIds.has(t.id));
+      setActiveDataset((d) => ({
+        ...d,
+        updatedAt: new Date().toLocaleTimeString(),
+        totalCount: updated.length
+      }));
+      return updated;
+    });
+    if (selectedTxn && selectedTxnIds.has(selectedTxn.id)) {
+      setSelectedTxn(null);
+    }
+    setSelectedTxnIds(new Set());
+    showNotification(`Successfully deleted ${count} transaction record${count > 1 ? 's' : ''}.`);
+  };
+
+  // Clear all transaction history
+  const handleClearAllTransactions = () => {
+    if (transactions.length === 0) {
+      showNotification('Transaction history is already empty.');
+      return;
+    }
+    if (!window.confirm(`Are you sure you want to clear all ${transactions.length} transactions? (You can restore the demo dataset at any time using "Reset Demo")`)) {
+      return;
+    }
+    setTransactions([]);
+    setSelectedTxnIds(new Set());
+    setSelectedTxn(null);
+    setActiveDataset({
+      name: 'Empty (History Cleared)',
+      source: 'cleared',
+      updatedAt: new Date().toLocaleTimeString(),
+      totalCount: 0
+    });
+    showNotification('All transaction history cleared across all tabs. Click "Reset Demo" at any time to restore demo telemetry.');
   };
 
   // Filtered transactions for the Transactions tab
@@ -530,6 +627,17 @@ function App() {
                   <span className="material-symbols-outlined" style={{ fontSize: '14px' }}>upload_file</span>
                   <span>Batch Ingest</span>
                 </button>
+                {transactions.length > 0 && (
+                  <button
+                    type="button"
+                    className="btn-clear-history"
+                    onClick={handleClearAllTransactions}
+                    title="Clear all transaction history"
+                  >
+                    <span className="material-symbols-outlined" style={{ fontSize: '14px', color: 'var(--carbon-red)' }}>delete_sweep</span>
+                    <span>Clear History</span>
+                  </button>
+                )}
                 {activeDataset.source !== 'initial' && (
                   <button
                     type="button"
@@ -607,7 +715,7 @@ function App() {
                   </button>
                 </div>
 
-                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
                   <button
                     type="button"
                     className="btn-threat-freeze"
@@ -628,6 +736,28 @@ function App() {
                     <span className="material-symbols-outlined" style={{ fontSize: '15px' }}>verified</span>
                     <span>Approve Selected</span>
                   </button>
+                  <button
+                    type="button"
+                    className="btn-bulk-delete"
+                    onClick={handleDeleteSelected}
+                    disabled={selectedTxnIds.size === 0}
+                    style={{ opacity: selectedTxnIds.size === 0 ? 0.5 : 1 }}
+                    title="Permanently remove selected records"
+                  >
+                    <span className="material-symbols-outlined" style={{ fontSize: '15px' }}>delete</span>
+                    <span>Delete Selected</span>
+                  </button>
+                  {transactions.length > 0 && (
+                    <button
+                      type="button"
+                      className="btn-bulk-clear-all"
+                      onClick={handleClearAllTransactions}
+                      title="Clear all transaction history"
+                    >
+                      <span className="material-symbols-outlined" style={{ fontSize: '15px', color: 'var(--carbon-red)' }}>delete_forever</span>
+                      <span>Clear All</span>
+                    </button>
+                  )}
                 </div>
               </div>
             </div>
@@ -665,8 +795,52 @@ function App() {
                   <tbody>
                     {filteredTransactions.length === 0 ? (
                       <tr>
-                        <td colSpan="10" style={{ textAlign: 'center', padding: '36px', color: 'var(--carbon-text-muted)' }}>
-                          No transactions matching current filter or search criteria.
+                        <td colSpan="10" style={{ padding: '0' }}>
+                          {transactions.length === 0 ? (
+                            <div className="empty-history-state">
+                              <span className="material-symbols-outlined empty-icon">delete_sweep</span>
+                              <h4>Transaction History is Empty</h4>
+                              <p>All telemetry records have been cleared. You can test a new transaction, ingest a batch dataset, or restore the default demo dataset.</p>
+                              <div className="empty-state-actions">
+                                <button
+                                  type="button"
+                                  className="btn-empty-reset"
+                                  onClick={handleResetToDemo}
+                                >
+                                  <span className="material-symbols-outlined" style={{ fontSize: '16px' }}>history</span>
+                                  <span>Restore Demo Dataset</span>
+                                </button>
+                                <button
+                                  type="button"
+                                  className="btn-empty-test"
+                                  onClick={() => setIsModalOpen(true)}
+                                >
+                                  <span className="material-symbols-outlined" style={{ fontSize: '16px' }}>add</span>
+                                  <span>Test Transaction</span>
+                                </button>
+                                <button
+                                  type="button"
+                                  className="btn-empty-batch"
+                                  onClick={() => setCurrentTab('BATCH')}
+                                >
+                                  <span className="material-symbols-outlined" style={{ fontSize: '16px' }}>upload_file</span>
+                                  <span>Batch Ingest</span>
+                                </button>
+                              </div>
+                            </div>
+                          ) : (
+                            <div style={{ textAlign: 'center', padding: '36px', color: 'var(--carbon-text-muted)' }}>
+                              <p>No transactions matching current filter or search criteria.</p>
+                              <button
+                                type="button"
+                                className="btn-secondary-action"
+                                onClick={() => { setActiveFilter('ALL'); setSearchQuery(''); }}
+                                style={{ marginTop: '12px', display: 'inline-flex' }}
+                              >
+                                Reset Filter & Search
+                              </button>
+                            </div>
+                          )}
                         </td>
                       </tr>
                     ) : (
@@ -761,6 +935,18 @@ function App() {
                                     Approve
                                   </button>
                                 )}
+                                <button
+                                  type="button"
+                                  className="btn-quick-delete"
+                                  onClick={() => {
+                                    if (window.confirm(`Delete transaction record ${txn.id}?`)) {
+                                      handleDeleteSingleTxn(txn.id);
+                                    }
+                                  }}
+                                  title="Delete record"
+                                >
+                                  <span className="material-symbols-outlined" style={{ fontSize: '13px' }}>delete</span>
+                                </button>
                               </div>
                             </td>
                           </tr>
@@ -831,6 +1017,7 @@ function App() {
         transaction={selectedTxn}
         onClose={() => setSelectedTxn(null)}
         onUpdateStatus={handleUpdateStatus}
+        onDeleteTxn={handleDeleteSingleTxn}
       />
     </div>
   );

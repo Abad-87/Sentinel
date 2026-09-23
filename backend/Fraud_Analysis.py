@@ -1,13 +1,3 @@
-"""
-Fraud_Analysis.py - Dedicated Fraud Analytics & Visualization Module
-
-Provides reusable statistical analytics and chart generation for:
-- Online fraud transactions (e.g. onlinefraud.csv)
-- Credit card / synthetic fraud transactions (e.g. synthetic_fraud_data.csv)
-
-Operates directly on pandas DataFrames or CSV file paths without web framework dependencies.
-"""
-
 import os
 import sys
 import time

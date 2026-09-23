@@ -1,6 +1,6 @@
 import React from 'react';
 
-const TransactionInspectorModal = ({ transaction, onClose, onUpdateStatus }) => {
+const TransactionInspectorModal = ({ transaction, onClose, onUpdateStatus, onDeleteTxn }) => {
   if (!transaction) return null;
 
   const getRiskClass = (risk) => {
@@ -92,7 +92,7 @@ const TransactionInspectorModal = ({ transaction, onClose, onUpdateStatus }) => 
             <div className="panel-header">
               <span className="panel-title" style={{ fontSize: '12px' }}>Ledger Balance Discrepancy Analysis</span>
               <span style={{ fontFamily: 'var(--font-mono)', fontSize: '10px', color: 'var(--carbon-text-muted)' }}>
-                Step {transaction.step} ({transaction.step % 24}:00 hrs)
+                Step {transaction.step} ({((transaction.step - 1) % 24 + 24) % 24}:00 hrs)
               </span>
             </div>
 
@@ -152,6 +152,22 @@ const TransactionInspectorModal = ({ transaction, onClose, onUpdateStatus }) => 
 
         {/* Modal Footer with Actions */}
         <div className="modal-footer">
+          {onDeleteTxn && (
+            <button
+              type="button"
+              className="btn-modal-delete"
+              onClick={() => {
+                if (window.confirm(`Are you sure you want to permanently delete transaction record ${transaction.id}?`)) {
+                  onDeleteTxn(transaction.id);
+                  onClose();
+                }
+              }}
+              title="Permanently delete this transaction record"
+            >
+              <span className="material-symbols-outlined" style={{ fontSize: '16px' }}>delete</span>
+              <span>Delete Record</span>
+            </button>
+          )}
           <button type="button" className="btn-bulk-action" onClick={onClose}>
             Close
           </button>
