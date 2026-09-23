@@ -1,6 +1,7 @@
-import React, { useState } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 
 const FraudAssessmentModal = ({ isOpen, onClose, onPredictionResult }) => {
+  const resultRef = useRef(null);
   const initialFormState = {
     step: 2,
     Type: 'TRANSFER',
@@ -15,6 +16,12 @@ const FraudAssessmentModal = ({ isOpen, onClose, onPredictionResult }) => {
   const [error, setError] = useState(null);
   const [localResult, setLocalResult] = useState(null);
   const [createdTxnId, setCreatedTxnId] = useState(null);
+
+  useEffect(() => {
+    if (localResult && resultRef.current) {
+      resultRef.current.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    }
+  }, [localResult]);
 
   if (!isOpen) return null;
 
@@ -126,7 +133,7 @@ const FraudAssessmentModal = ({ isOpen, onClose, onPredictionResult }) => {
       let riskTag = 'Low Risk';
 
       if (isTransfer && isDrain && isBig) {
-        fraudProb = 99.18;
+        fraudProb = 99.74;
         predLabel = 1;
         riskTag = 'High Risk';
       } else if (isTransfer && (isDrain || isBig)) {
@@ -134,10 +141,35 @@ const FraudAssessmentModal = ({ isOpen, onClose, onPredictionResult }) => {
         riskTag = 'Medium Risk';
       }
 
+      const fallbackRecs = [];
+      if (riskTag in { 'High Risk': 1, 'Medium Risk': 1 }) {
+        if (isTransfer && payload.Amount > 0 && payload.NewbalanceDest === 0) {
+          fallbackRecs.push('Review destination account activity.');
+        }
+        if (payload.step % 24 <= 5) {
+          fallbackRecs.push('Transaction occurred during late-night hours. Apply enhanced transaction verification.');
+        }
+        if (payload.Amount > 200000) {
+          fallbackRecs.push('Extremely high transaction amount. Verify the transaction amount with the customer.');
+        }
+        if (isTransfer) {
+          fallbackRecs.push('Perform additional verification for this transaction type.');
+        }
+        if (fallbackRecs.length === 0) {
+          fallbackRecs.push('Flag the transaction for manual review.');
+        }
+      } else {
+        fallbackRecs.push('Transaction appears low risk, continue normal transaction monitoring.');
+      }
+
       const syntheticResult = {
+        Prediction: riskTag,
+        Fraud_probability: fraudProb,
+        'Recommendation_Actions to be taken': fallbackRecs,
         prediction: predLabel,
         fraud_probability: fraudProb,
         risk_level: riskTag,
+        recommendations: fallbackRecs,
         status: predLabel === 1 ? 'Blocked' : 'Approved'
       };
 
@@ -151,19 +183,32 @@ const FraudAssessmentModal = ({ isOpen, onClose, onPredictionResult }) => {
     const txnId = `TXN-${Math.floor(10000 + Math.random() * 90000)}`;
     setCreatedTxnId(txnId);
 
-    const prob = apiData.fraud_probability !== undefined
-      ? parseFloat((apiData.fraud_probability * (apiData.fraud_probability <= 1 ? 100 : 1)).toFixed(2))
-      : 50.0;
+    const rawProb = apiData.Fraud_probability !== undefined
+      ? apiData.Fraud_probability
+      : (apiData.fraud_probability !== undefined ? apiData.fraud_probability : 50.0);
+    const prob = parseFloat((rawProb * (rawProb <= 1 ? 100 : 1)).toFixed(2));
 
-    let computedRisk = 'Low Risk';
+    const backendRisk = apiData.Prediction || apiData.prediction || apiData.risk_level;
+    let computedRisk = backendRisk || 'Low Risk';
+    if (!backendRisk) {
+      if (prob >= 70) computedRisk = 'High Risk';
+      else if (prob >= 40) computedRisk = 'Medium Risk';
+      else computedRisk = 'Low Risk';
+    }
+
     let defaultStatus = 'Approved';
-    if (prob >= 80 || apiData.prediction === 1) {
-      computedRisk = 'High Risk';
+    if (computedRisk === 'High Risk' || apiData.prediction === 1) {
       defaultStatus = 'Blocked';
-    } else if (prob >= 35) {
-      computedRisk = 'Medium Risk';
+    } else if (computedRisk === 'Medium Risk') {
       defaultStatus = 'Under Review';
     }
+
+    // Extract recommendations strictly from backend
+    const backendRecommendations = Array.isArray(apiData['Recommendation_Actions to be taken'])
+      ? apiData['Recommendation_Actions to be taken']
+      : (Array.isArray(apiData.recommendations)
+        ? apiData.recommendations
+        : (Array.isArray(apiData.reasons) ? apiData.reasons : []));
 
     const anomalyFlags = [];
     if (rawPayload.OldbalanceOrg > 0 && rawPayload.NewbalanceOrig === 0) {
@@ -191,10 +236,10 @@ const FraudAssessmentModal = ({ isOpen, onClose, onPredictionResult }) => {
       fraudProbability: prob,
       status: defaultStatus,
       anomalyFlags,
-      recommendations: [
+      recommendations: backendRecommendations.length > 0 ? backendRecommendations : [
         computedRisk === 'High Risk'
-          ? 'Quarantine transaction and execute L3 identity challenge.'
-          : 'Normal execution approved by engine.'
+          ? 'Review destination account activity.'
+          : 'Transaction appears low risk, continue normal transaction monitoring.'
       ]
     };
 
@@ -354,17 +399,87 @@ const FraudAssessmentModal = ({ isOpen, onClose, onPredictionResult }) => {
 
           {/* Results Display */}
           {localResult && (
-            <div style={{ background: 'var(--carbon-surface-container)', border: '1px solid var(--carbon-border-medium)', borderRadius: '4px', padding: '14px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                <span style={{ fontFamily: 'var(--font-mono)', fontWeight: 'bold', color: 'var(--carbon-blue)' }}>
+            <div
+              ref={resultRef}
+              style={{
+                background: 'var(--carbon-surface-container)',
+                border: '1px solid var(--carbon-border-medium)',
+                borderRadius: '6px',
+                padding: '16px',
+                display: 'flex',
+                flexDirection: 'column',
+                gap: '14px'
+              }}
+            >
+              {/* Scored Part */}
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '8px', paddingBottom: '10px', borderBottom: '1px solid var(--carbon-border-subtle)' }}>
+                <span style={{ fontFamily: 'var(--font-mono)', fontWeight: 'bold', color: 'var(--carbon-blue)', fontSize: '13px' }}>
                   Scored: {localResult.id}
                 </span>
-                <span className={`risk-badge ${localResult.risk === 'High Risk' ? 'risk-high' : localResult.risk === 'Medium Risk' ? 'risk-medium' : 'risk-low'}`}>
-                  {localResult.risk} ({localResult.fraudProbability}%)
-                </span>
+                <div style={{ fontSize: '11px', color: 'var(--carbon-text-secondary)' }}>
+                  Live Monitoring Status: <strong style={{ color: localResult.status === 'Blocked' ? 'var(--carbon-red)' : 'var(--carbon-green)' }}>{localResult.status}</strong>
+                </div>
               </div>
-              <div style={{ fontSize: '11px', color: 'var(--carbon-text-secondary)' }}>
-                Transaction has been automatically injected into the Live Monitoring Feed. Status: <strong style={{ color: localResult.status === 'Blocked' ? 'var(--carbon-red)' : 'var(--carbon-green)' }}>{localResult.status}</strong>.
+
+              {/* Model Assessment Section - Directly below the scored part */}
+              <div
+                className="model-assessment-card"
+                style={{
+                  background: '#ffffff',
+                  border: '1px solid var(--md-border, #e9ecef)',
+                  borderRadius: '6px',
+                  padding: '16px 20px',
+                  boxShadow: '0 2px 6px rgba(0, 0, 0, 0.04)',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: '12px'
+                }}
+              >
+                {/* Assessment Header: Risk Badge + Fraud Probability */}
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '10px' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '13px' }}>
+                    <span style={{ fontWeight: '600', color: 'var(--md-text-primary, #344767)' }}>
+                      Model Assessment:
+                    </span>
+                    <span
+                      style={{
+                        padding: '3px 10px',
+                        borderRadius: '4px',
+                        fontSize: '12px',
+                        fontWeight: '700',
+                        fontFamily: 'var(--font-mono)',
+                        backgroundColor: localResult.risk === 'High Risk' ? '#fee2e2' : localResult.risk === 'Medium Risk' ? '#fef3c7' : '#dcfce7',
+                        color: localResult.risk === 'High Risk' ? '#dc2626' : localResult.risk === 'Medium Risk' ? '#d97706' : '#16a34a',
+                        border: `1px solid ${localResult.risk === 'High Risk' ? '#fca5a5' : localResult.risk === 'Medium Risk' ? '#fcd34d' : '#86efac'}`
+                      }}
+                    >
+                      {localResult.risk}
+                    </span>
+                  </div>
+                  <div style={{ fontSize: '13px', color: 'var(--md-text-primary, #344767)' }}>
+                    Fraud Probability: <strong style={{ fontFamily: 'var(--font-mono)', fontSize: '14px', color: localResult.risk === 'High Risk' ? '#dc2626' : localResult.risk === 'Medium Risk' ? '#d97706' : '#16a34a' }}>{localResult.fraudProbability}%</strong>
+                  </div>
+                </div>
+
+                {/* Recommended Actions */}
+                <div style={{ marginTop: '4px' }}>
+                  <div style={{ fontSize: '13px', fontWeight: '600', color: 'var(--md-text-primary, #344767)', textAlign: 'center', marginBottom: '10px' }}>
+                    Recommended Actions:
+                  </div>
+                  {localResult.recommendations && localResult.recommendations.length > 0 ? (
+                    <ul style={{ listStyleType: 'disc', listStylePosition: 'inside', margin: 0, padding: 0, display: 'flex', flexDirection: 'column', gap: '8px', textAlign: 'center', width: '100%' }}>
+                      {localResult.recommendations.map((action, idx) => (
+                        <li key={idx} style={{ fontSize: '12px', lineHeight: '1.6', color: 'var(--md-text-secondary, #7b809a)' }}>
+                          {action}
+                        </li>
+                      ))}
+                    </ul>
+                  ) : (
+                    <div style={{ fontSize: '12px', color: 'var(--md-text-secondary, #7b809a)', textAlign: 'center' }}>
+                      Transaction appears low risk, continue normal transaction monitoring.
+                    </div>
+                  )}
+                </div>
               </div>
             </div>
           )}

@@ -110,7 +110,7 @@ def get_recommendations(step: int, txn_type: str, amount: float, old_balance: fl
 
     if output in {"High Risk", "Medium Risk"}:
         if txn_type in {"TRANSFER", "CASH_OUT"} and amount > 0 and new_dest == 0:
-            recommendations.append('Review destination account activity for mule/ghost account indicators.')
+            recommendations.append('Review destination account activity.')
 
         if step % 24 in {0, 1, 2, 3, 4, 5}:
             recommendations.append('Transaction occurred during late-night hours. Apply enhanced transaction verification.')
@@ -457,7 +457,11 @@ def predict(data: UserInput):
         result = {
             "Prediction": output,
             "Fraud_probability": fraud_probability,
-            "Recommendation_Actions to be taken": recommendations
+            "Recommendation_Actions to be taken": recommendations,
+            "prediction": output,
+            "fraud_probability": fraud_probability,
+            "recommendations": recommendations,
+            "reasons": recommendations
         }
 
         return JSONResponse(status_code=200, content=result)
