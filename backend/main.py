@@ -31,8 +31,14 @@ if os.path.basename(BASE_DIR).lower() == 'backend':
 else:
     ROOT_DIR = BASE_DIR
 
-OUTPUTS_DIR = os.path.join(ROOT_DIR, 'Outputs')
-FRONTEND_OUTPUTS_DIR = os.path.join(ROOT_DIR, 'frontend', 'public', 'outputs')
+# Check if running in Vercel or AWS Lambda serverless environment
+IS_VERCEL = bool(os.environ.get("VERCEL") or os.environ.get("AWS_LAMBDA_FUNCTION_NAME"))
+if IS_VERCEL:
+    OUTPUTS_DIR = os.path.join("/tmp", "Outputs")
+    FRONTEND_OUTPUTS_DIR = os.path.join("/tmp", "frontend_outputs")
+else:
+    OUTPUTS_DIR = os.path.join(ROOT_DIR, 'Outputs')
+    FRONTEND_OUTPUTS_DIR = os.path.join(ROOT_DIR, 'frontend', 'public', 'outputs')
 
 # Ensure ROOT_DIR and BASE_DIR are in sys.path for clean imports
 for p in [ROOT_DIR, BASE_DIR]:
@@ -55,7 +61,9 @@ def find_file(filename: str) -> str:
     candidates = [
         os.path.join(BASE_DIR, filename),
         os.path.join(ROOT_DIR, 'backend', filename),
-        os.path.join(ROOT_DIR, filename)
+        os.path.join(ROOT_DIR, filename),
+        os.path.join(os.getcwd(), filename),
+        os.path.join(os.getcwd(), 'backend', filename),
     ]
     for c in candidates:
         if os.path.exists(c):
@@ -85,9 +93,14 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Ensure outputs directory exists and mount static route
-os.makedirs(OUTPUTS_DIR, exist_ok=True)
-app.mount("/outputs", StaticFiles(directory=OUTPUTS_DIR), name="outputs")
+# Ensure outputs directory exists and mount static route (safe for serverless read-only filesystems)
+try:
+    os.makedirs(OUTPUTS_DIR, exist_ok=True)
+except OSError:
+    pass
+
+if os.path.exists(OUTPUTS_DIR):
+    app.mount("/outputs", StaticFiles(directory=OUTPUTS_DIR), name="outputs")
 
 
 class UserInput(BaseModel):

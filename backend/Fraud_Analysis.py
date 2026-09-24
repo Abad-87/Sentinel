@@ -10,7 +10,11 @@ import pandas as pd
 import matplotlib
 matplotlib.use('Agg')
 import matplotlib.pyplot as plt
-import seaborn as sns
+
+try:
+    import seaborn as sns
+except ImportError:
+    sns = None
 
 # Set chart styling
 plt.style.use('ggplot')
@@ -23,9 +27,15 @@ if os.path.basename(MODULE_DIR).lower() == 'backend':
 else:
     ROOT_DIR = MODULE_DIR
 
-DEFAULT_OUTPUT_DIR = os.path.join(ROOT_DIR, 'Outputs')
-FRONTEND_OUTPUT_DIR = os.path.join(ROOT_DIR, 'frontend', 'public', 'outputs')
-DATA_FOLDER = os.path.join(ROOT_DIR, 'Data')
+IS_VERCEL = bool(os.environ.get("VERCEL") or os.environ.get("AWS_LAMBDA_FUNCTION_NAME"))
+if IS_VERCEL:
+    DEFAULT_OUTPUT_DIR = os.path.join("/tmp", "Outputs")
+    FRONTEND_OUTPUT_DIR = os.path.join("/tmp", "frontend_outputs")
+    DATA_FOLDER = os.path.join("/tmp", "Data")
+else:
+    DEFAULT_OUTPUT_DIR = os.path.join(ROOT_DIR, 'Outputs')
+    FRONTEND_OUTPUT_DIR = os.path.join(ROOT_DIR, 'frontend', 'public', 'outputs')
+    DATA_FOLDER = os.path.join(ROOT_DIR, 'Data')
 
 
 def get_output_dirs(custom_dirs: Optional[Union[str, List[str]]] = None) -> List[str]:
@@ -40,8 +50,11 @@ def get_output_dirs(custom_dirs: Optional[Union[str, List[str]]] = None) -> List
     resolved = []
     for d in dirs:
         if d:
-            os.makedirs(d, exist_ok=True)
-            resolved.append(d)
+            try:
+                os.makedirs(d, exist_ok=True)
+                resolved.append(d)
+            except OSError:
+                pass
     return resolved
 
 
