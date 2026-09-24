@@ -460,17 +460,7 @@ function App() {
               </div>
             </button>
 
-            <button
-              type="button"
-              className={`sidebar-nav-item ${currentTab === 'RULES' ? 'active' : ''}`}
-              onClick={() => setCurrentTab('RULES')}
-            >
-              <div className="nav-item-left">
-                <span className="material-symbols-outlined">tune</span>
-                <span>Detection Rules</span>
-              </div>
-              <span className="nav-badge nav-badge-green">4</span>
-            </button>
+            {/* Detection Rules tab hidden from sidebar as requested */}
 
             <button
               type="button"
