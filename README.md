@@ -182,7 +182,7 @@ pip install -r requirements.txt
 uvicorn main:app --reload --host 0.0.0.0 --port 8000
 ```
 
-> 🌐 API available at **sentinel-kohl-theta.vercel.app**
+> 🌐 API available at **https://sentinel-kohl-theta.vercel.app**
 
 ### 2️⃣ Frontend
 
