@@ -83,7 +83,14 @@ scaler = preprocessor.named_transformers_['scaler']
 ohe = preprocessor.named_transformers_['OHE']
 num_cols = ['step', 'amount', 'oldbalanceOrg', 'newbalanceOrig', 'newbalanceDest', 'orig_balance_error', 'hour']
 
-app = FastAPI(title='Online Fraud Detection & Analytics API', version='1.2.0')
+app = FastAPI(
+    title='Online Fraud Detection & Analytics API',
+    version='1.2.0',
+    redirect_slashes=False,
+    docs_url='/docs',
+    redoc_url='/redoc',
+    openapi_url='/openapi.json'
+)
 
 app.add_middleware(
     CORSMiddleware,
@@ -175,6 +182,8 @@ def get_recommendations(step: int, txn_type: str, amount: float, old_balance: fl
 
 @app.get('/')
 @app.get('/health')
+@app.get('/api')
+@app.get('/api/health')
 def health_check():
     return {
         "status": "healthy",
