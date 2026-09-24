@@ -1,7 +1,5 @@
 <div align="center">
 
-<img src="https://capsule-render.vercel.app/api?type=waving&color=0:0f172a,50:1e3a8a,100:06b6d4&height=220&section=header&text=Sentinel&fontSize=76&fontColor=ffffff&animation=fadeIn&fontAlignY=38&desc=AI-Powered%20Fraud%20Detection%20%26%20Visual%20Intelligence&descSize=20&descAlignY=60" alt="Sentinel banner" width="100%" />
-
 <img src="assets/logo.jpeg" alt="Sentinel logo" width="240" />
 
 <p>
