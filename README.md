@@ -101,16 +101,16 @@ Sentinel/
 
 ```mermaid
 flowchart LR
-    A[📝 Transaction<br/>manual or batch file] --> B[🧹 Validate &<br/>preprocess]
-    B --> C[🧠 ML model predicts<br/>fraud probability]
-    C --> D{Risk level}
-    D -->|≥ 70%| E[🔴 High]
-    D -->|40 – 69.99%| F[🟠 Medium]
-    D -->|< 40%| G[🟢 Low]
-    E --> H[💡 Recommendations<br/>& anomaly flags]
+    A["📝 Transaction<br/>manual or batch file"] --> B["🧹 Validate &<br/>preprocess"]
+    B --> C["🧠 ML model predicts<br/>fraud probability"]
+    C --> D{"Risk level"}
+    D -->|"≥ 70%"| E["🔴 High"]
+    D -->|"40 – 69.99%"| F["🟠 Medium"]
+    D -->|"< 40%"| G["🟢 Low"]
+    E --> H["💡 Recommendations<br/>& anomaly flags"]
     F --> H
     G --> H
-    H --> I[📊 Visual analytics<br/>in the app]
+    H --> I["📊 Visual analytics<br/>in the app"]
 ```
 
 ### 🚦 Risk Levels
