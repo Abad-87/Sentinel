@@ -1,6 +1,6 @@
 <div align="center">
 
-<img src="assets/logo.jpeg" alt="Sentinel logo" width="240" />
+<img src="assets/WhatsApp Image 2026-09-21 at 7.24.59 PM.jpeg" alt="Sentinel logo" width="240" />
 
 <p>
   <img src="https://img.shields.io/badge/Python-3.10+-3776AB?style=for-the-badge&logo=python&logoColor=white" alt="Python" />
