@@ -79,6 +79,7 @@ Sentinel/
 │   ├── Model.pkl
 │   ├── Preprocessor.pkl
 │   ├── requirements.txt
+│   ├── .dockerignore
 │   └── Dockerfile
 ├── frontend/
 │   ├── src/
@@ -86,7 +87,11 @@ Sentinel/
 │   ├── package.json
 │   ├── vite.config.js
 │   ├── serve.js
+│   ├── nginx.conf
+│   ├── .dockerignore
+│   ├── Dockerfile
 │   └── README.md
+├── docker-compose.yml
 ├── Data/
 ├── Outputs/
 ├── main.py
@@ -207,8 +212,33 @@ npm run dev
 
 ## ☁️ Deployment
 
+### 🐳 Full Stack with Docker Compose
+
+Run both the FastAPI backend and React frontend with a single command:
+
+```bash
+docker compose up --build
+```
+
+- 🌐 Frontend: **http://localhost:5173**
+- ⚙️ Backend API & Docs: **http://localhost:8000/docs**
+
+### 🐳 Frontend Docker Container
+
+Build and run the frontend standalone container:
+
+```bash
+cd frontend
+# Build the Docker image (optionally pass VITE_API_BASE_URL)
+docker build -t sentinel-frontend --build-arg VITE_API_BASE_URL=http://localhost:8000 .
+
+# Run the container
+docker run -d -p 5173:80 --name sentinel-frontend sentinel-frontend
+```
+
 - 🐳 The backend runs with **Uvicorn** and is compatible with **Docker**-based deployment.
-- ▲ The frontend is built for **Vite** and suits **Vercel** or similar hosting platforms.
+- ⚡ The frontend is built with **Node.js** and served via **Nginx** (Alpine) with SPA routing and asset caching.
+- ▲ The frontend also remains fully compatible with **Vercel** or static hosting providers.
 - 🖼️ Visual outputs are exposed through the backend static route, making them available to the frontend dashboards.
 
 ---
