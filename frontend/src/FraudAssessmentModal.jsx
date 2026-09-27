@@ -677,8 +677,8 @@ const FraudAssessmentModal = ({ isOpen, onClose, onPredictionResult }) => {
                             <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '9.5px', color: '#64748b', fontFamily: 'var(--font-mono)', marginTop: '2px' }}>
                               <span>0% Safe</span>
                               <span>40% Moderate</span>
-                              <span>70% High Threat</span>
-                              <span>100% Critical</span>
+                              <span>70% Moderate/High</span>
+                              <span>100% High Risk</span>
                             </div>
                           </div>
 
@@ -693,7 +693,7 @@ const FraudAssessmentModal = ({ isOpen, onClose, onPredictionResult }) => {
                               <div style={{ fontSize: '9px', color: '#64748b', fontFamily: 'var(--font-mono)' }}>40% - 70%</div>
                             </div>
                             <div style={{ background: '#fef2f2', border: '1px solid #fecaca', borderRadius: '4px', padding: '6px', textAlign: 'center' }}>
-                              <div style={{ fontSize: '9px', fontWeight: '700', color: '#dc2626' }}>CRITICAL</div>
+                              <div style={{ fontSize: '9px', fontWeight: '700', color: '#dc2626' }}>HIGH RISK</div>
                               <div style={{ fontSize: '9px', color: '#64748b', fontFamily: 'var(--font-mono)' }}>&gt; 70%</div>
                             </div>
                           </div>
@@ -701,7 +701,7 @@ const FraudAssessmentModal = ({ isOpen, onClose, onPredictionResult }) => {
                           {/* Contextual Description */}
                           <div style={{ fontSize: '11px', color: '#475569', lineHeight: '1.5', background: '#ffffff', padding: '10px 12px', borderRadius: '6px', border: '1px solid #e2e8f0' }}>
                             {prob >= 70
-                              ? '🚨 Critical Threat: Score surpasses the 70% threshold. Immediate transaction quarantine enforced.'
+                              ? '🚨 High Risk Threat: Score surpasses the 70% threshold. Immediate transaction quarantine enforced.'
                               : prob >= 40
                               ? '⚠️ Moderate Suspicion: Heightened risk score warrants secondary analyst evaluation.'
                               : '✓ Safe Baseline: Score is well within normal, verified commercial tolerances.'}

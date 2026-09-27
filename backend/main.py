@@ -56,6 +56,14 @@ from Fraud_Analysis import (
     get_credit_card_analytics
 )
 
+# Relational SQL Database Layer
+try:
+    import database
+except ImportError:
+    from backend import database
+
+database.init_db()
+
 # Resolve model and preprocessor file paths
 def find_file(filename: str) -> str:
     candidates = [
@@ -189,8 +197,170 @@ def health_check():
         "status": "healthy",
         "service": "Online Fraud Detection & Visual Analytics API",
         "version": "1.2.0",
-        "features": ["single_prediction", "batch_upload_csv_json", "visual_analytics", "dynamic_visual_regeneration"]
+        "database": database.get_db_status(),
+        "features": ["single_prediction", "batch_upload_csv_json", "visual_analytics", "dynamic_visual_regeneration", "sql_database"]
     }
+
+
+# ============================================================================
+# SQL DATABASE API ROUTES (READ, INSERT, UPDATE, QUERY, SEED)
+# ============================================================================
+
+@app.get('/api/database/status')
+def get_database_status():
+    """Return SQL database connection status, table record counts, and file metrics."""
+    try:
+        return database.get_db_status()
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Database status error: {str(e)}")
+
+
+@app.post('/api/database/reset')
+def reset_database():
+    """Re-seed SQL database back to clean initial demo dataset state."""
+    try:
+        database.init_db(force_recreate=True)
+        return {
+            "status": "success",
+            "message": "SQL database successfully reset to default seed records.",
+            "database": database.get_db_status()
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to reset database: {str(e)}")
+
+
+@app.get('/api/transactions')
+def list_transactions(
+    limit: Optional[int] = None,
+    offset: int = 0,
+    search: Optional[str] = None,
+    risk: Optional[str] = None,
+    status: Optional[str] = None,
+    type: Optional[str] = None
+):
+    """Retrieve database-persisted transactions with optional relational filtering."""
+    try:
+        txns = database.get_all_transactions(
+            limit=limit,
+            offset=offset,
+            search=search,
+            risk=risk,
+            status=status,
+            txn_type=type
+        )
+        return txns
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to retrieve transactions: {str(e)}")
+
+
+@app.get('/api/transactions/{txn_id}')
+def get_transaction(txn_id: str):
+    """Retrieve full audit dossier for a single transaction from SQL database."""
+    txn = database.get_transaction_by_id(txn_id)
+    if not txn:
+        raise HTTPException(status_code=404, detail=f"Transaction {txn_id} not found in database.")
+    return txn
+
+
+@app.post('/api/transactions')
+def create_transaction(txn: dict = Body(...)):
+    """
+    Insert a transaction into the SQL database. If fraud prediction metrics
+    are not already provided, runs the ML model and recommendation engine automatically.
+    """
+    try:
+        if "fraudProbability" not in txn or "risk" not in txn:
+            step = int(txn.get("step", 1))
+            txn_type = str(txn.get("type", "PAYMENT")).upper()
+            amount = float(txn.get("amount", 0.0))
+            old_balance = float(txn.get("oldbalanceOrg", amount))
+            new_orig = float(txn.get("newbalanceOrig", 0.0))
+            new_dest = float(txn.get("newbalanceDest", 0.0))
+            orig_balance_error = old_balance - amount - new_orig
+            hour = (step - 1) % 24
+            is_night = 1 if 0 <= hour <= 5 else 0
+
+            df_input = pd.DataFrame([{
+                'step': step,
+                'type': txn_type,
+                'amount': float(np.log1p(amount)),
+                'oldbalanceOrg': float(np.log1p(old_balance)),
+                'newbalanceOrig': float(np.log1p(new_orig)),
+                'newbalanceDest': float(np.log1p(new_dest)),
+                'orig_balance_error': orig_balance_error,
+                'hour': hour,
+                'Is_night': is_night
+            }])
+
+            scaled = scaler.transform(df_input[num_cols])
+            encoded = ohe.transform(df_input[['type']])
+            remainder = df_input[['Is_night']].values
+            features = np.hstack([scaled, encoded, remainder])
+            feature_df = pd.DataFrame(features, columns=model.feature_names_in_)
+
+            prediction = float(model.predict_proba(feature_df)[0][1])
+            fraud_prob = round(prediction * 100, 2)
+            risk = 'High Risk' if prediction >= 0.70 else 'Medium Risk' if 0.40 <= prediction < 0.70 else 'Low Risk'
+            recs = get_recommendations(step, txn_type, amount, old_balance, new_dest, risk)
+
+            flags = []
+            if amount > 200000:
+                flags.append("High amount anomaly (> $200k)")
+            if old_balance > 0 and new_orig == 0:
+                flags.append("Complete origin account balance depletion ($0 remaining)")
+            if is_night:
+                flags.append("Off-peak late night transaction timestamp")
+            if txn_type in ['TRANSFER', 'CASH_OUT'] and new_dest == 0:
+                flags.append("Unverified destination account with $0 subsequent balance")
+
+            txn["fraudProbability"] = fraud_prob
+            txn["risk"] = risk
+            txn["recommendations"] = recs
+            txn["anomalyFlags"] = flags
+            if "status" not in txn:
+                txn["status"] = "Blocked" if risk == "High Risk" else "Under Review" if risk == "Medium Risk" else "Approved"
+
+        created = database.insert_transaction(txn)
+        return JSONResponse(status_code=201, content=created)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to insert transaction into SQL database: {str(e)}")
+
+
+@app.patch('/api/transactions/{txn_id}/status')
+def update_transaction_status(txn_id: str, payload: dict = Body(...)):
+    """Update transaction status (Blocked / Approved / Under Review) and persist in SQL with audit log."""
+    new_status = payload.get("status")
+    if not new_status:
+        raise HTTPException(status_code=400, detail="Missing required 'status' property in payload.")
+    updated = database.update_transaction_status(txn_id, new_status)
+    if not updated:
+        raise HTTPException(status_code=404, detail=f"Transaction {txn_id} not found in database.")
+    return updated
+
+
+@app.delete('/api/transactions/{txn_id}')
+def delete_single_transaction(txn_id: str):
+    """Permanently delete a transaction and associated fraud analysis from SQL database."""
+    success = database.delete_transaction(txn_id)
+    if not success:
+        raise HTTPException(status_code=404, detail=f"Transaction {txn_id} not found in database.")
+    return {"status": "success", "message": f"Transaction {txn_id} deleted from SQL database."}
+
+
+@app.delete('/api/transactions')
+def clear_all_transactions():
+    """Clear all transactions and analyses from SQL database."""
+    count = database.clear_all_transactions()
+    return {"status": "success", "message": f"Successfully deleted {count} transactions from database.", "count": count}
+
+
+@app.get('/api/customers')
+def list_customers():
+    """Query customer/user account profiles with balances and risk scores from SQL database."""
+    try:
+        return database.get_all_customers()
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to query customers: {str(e)}")
 
 
 @app.get('/analytics/visuals')
@@ -501,6 +671,13 @@ async def analyze_batch_upload(file: UploadFile = File(...)):
                 "anomalyFlags": df['anomalyFlags'].iloc[i],
                 "recommendations": df['recommendations'].iloc[i]
             })
+
+        # Persist uploaded batch records into the SQL database
+        for item in results:
+            try:
+                database.insert_transaction(item)
+            except Exception as sql_err:
+                print("Warning: failed to persist batch item to SQL:", sql_err)
 
         # Generate updated analytics charts via Fraud_Analysis module
         target_dirs = [OUTPUTS_DIR, FRONTEND_OUTPUTS_DIR]

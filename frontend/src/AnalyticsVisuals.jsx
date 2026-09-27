@@ -98,7 +98,7 @@ const AnalyticsVisuals = ({ transactions = [], activeDataset, onShowToast }) => 
       { range: '20% - 40%', min: 20, max: 40, label: 'Low Suspicion', color: '#34d399' },
       { range: '40% - 60%', min: 40, max: 60, label: 'Moderate Risk', color: '#f59e0b' },
       { range: '60% - 80%', min: 60, max: 80, label: 'Elevated Risk', color: '#fb923c' },
-      { range: '80% - 100%', min: 80, max: 100, label: 'Critical Fraud', color: '#ef4444' }
+      { range: '80% - 100%', min: 80, max: 100, label: 'High Risk', color: '#ef4444' }
     ].map((bin) => {
       const matching = transactions.filter((t) => (t.fraudProbability || 0) >= bin.min && (t.fraudProbability || 0) <= bin.max);
       const volume = matching.reduce((sum, t) => sum + (t.amount || 0), 0);
@@ -446,7 +446,7 @@ const AnalyticsVisuals = ({ transactions = [], activeDataset, onShowToast }) => 
               {/* Background Zones */}
               <rect x="50" y="25" width="470" height="60" fill="rgba(239, 68, 68, 0.06)" />
               <text x="510" y="42" fill="#ef4444" fontSize="8" fontWeight="bold" fontFamily="var(--font-mono)" textAnchor="end">
-                CRITICAL THREAT ZONE (&gt;80%)
+                HIGH RISK ZONE (&gt;80%)
               </text>
 
               {/* Y Axis Gridlines (0%, 25%, 50%, 75%, 100%) */}

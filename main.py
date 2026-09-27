@@ -17,7 +17,16 @@ from backend.main import (
     get_visuals_metadata,
     regenerate_visuals_from_data,
     analyze_batch_upload,
-    get_recommendations
+    get_recommendations,
+    get_database_status,
+    reset_database,
+    list_transactions,
+    get_transaction,
+    create_transaction,
+    update_transaction_status,
+    delete_single_transaction,
+    clear_all_transactions,
+    list_customers
 )
 
 if __name__ == '__main__':

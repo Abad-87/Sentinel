@@ -127,9 +127,18 @@ flowchart LR
 
 | Method | Route | Description |
 |:------:|:------|:------------|
-| `GET` | `/` or `/health` | Service health check |
+| `GET` | `/` or `/health` | Service health check & SQL DB status |
+| `GET` | `/api/database/status` | SQL database connection status & metrics |
+| `POST` | `/api/database/reset` | Reset SQL database to clean seed state |
+| `GET` | `/api/transactions` | Query persisted transactions with filters |
+| `GET` | `/api/transactions/{id}` | Retrieve full transaction audit dossier |
+| `POST` | `/api/transactions` | Insert transaction and fraud analysis into SQL DB |
+| `PATCH` | `/api/transactions/{id}/status` | Update transaction status (Blocked/Approved) |
+| `DELETE` | `/api/transactions/{id}` | Delete transaction from SQL DB |
+| `DELETE` | `/api/transactions` | Purge all transactions from SQL DB |
+| `GET` | `/api/customers` | Query customer/user entities from SQL DB |
 | `POST` | `/predict` | Predict fraud probability for a single transaction |
-| `POST` | `/analyze/upload` | Process a CSV or JSON file with multiple transactions |
+| `POST` | `/analyze/upload` | Process batch CSV/JSON and persist to SQL DB |
 | `GET` | `/analytics/visuals` | Fetch analytics metadata and generated visual paths |
 | `POST` | `/analytics/regenerate-from-data` | Regenerate chart output from uploaded transaction data |
 

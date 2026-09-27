@@ -45,10 +45,18 @@ function App() {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [selectedTxn, setSelectedTxn] = useState(null);
   const [backendStatus, setBackendStatus] = useState('checking');
+  const [dbStatus, setDbStatus] = useState({ status: 'checking', engine: 'SQLite' });
+  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [activeFilter, setActiveFilter] = useState('ALL');
   const [searchQuery, setSearchQuery] = useState('');
   const [notification, setNotification] = useState(null);
   const [selectedTxnIds, setSelectedTxnIds] = useState(new Set());
+
+  // API URL resolver helper
+  const getApiUrl = (endpoint) => {
+    const apiBase = import.meta.env.VITE_API_BASE_URL || '';
+    return apiBase ? `${apiBase}${endpoint}` : endpoint;
+  };
 
   // Automatically persist transactions to localStorage
   useEffect(() => {
@@ -68,22 +76,51 @@ function App() {
     }
   }, [activeDataset]);
 
-  // Backend Health check
-  const checkBackendHealth = async () => {
-    setBackendStatus('checking');
-    const apiBase = import.meta.env.VITE_API_BASE_URL || '';
-    const healthUrl = apiBase ? `${apiBase}/health` : '/health';
-
+  // Fetch transactions from the SQL Database on startup
+  const fetchDbTransactions = async () => {
     try {
       let res;
       try {
-        res = await fetch(healthUrl);
+        res = await fetch(getApiUrl('/api/transactions'));
+      } catch {
+        res = await fetch('http://127.0.0.1:8000/api/transactions');
+      }
+      if (res && res.ok) {
+        const data = await res.json();
+        if (Array.isArray(data) && data.length > 0) {
+          setTransactions(data);
+          setActiveDataset({
+            name: 'SQL Database (sentinel.db)',
+            source: 'database',
+            updatedAt: new Date().toLocaleTimeString(),
+            totalCount: data.length
+          });
+          return data;
+        }
+      }
+    } catch (e) {
+      console.warn('Could not retrieve transactions from SQL database:', e);
+    }
+    return null;
+  };
+
+  // Backend & SQL Database Health check
+  const checkBackendHealth = async () => {
+    setBackendStatus('checking');
+    try {
+      let res;
+      try {
+        res = await fetch(getApiUrl('/health'));
       } catch {
         res = await fetch('http://127.0.0.1:8000/health');
       }
 
-      if (res.ok) {
+      if (res && res.ok) {
+        const data = await res.json();
         setBackendStatus('connected');
+        if (data.database) {
+          setDbStatus(data.database);
+        }
       } else {
         setBackendStatus('offline');
       }
@@ -94,6 +131,7 @@ function App() {
 
   useEffect(() => {
     checkBackendHealth();
+    fetchDbTransactions();
   }, []);
 
   const showNotification = (msg) => {
@@ -139,6 +177,22 @@ function App() {
       });
       showNotification(`Added transaction ${newTxn.id} scored as ${newTxn.risk} (${newTxn.fraudProbability}%) merged into stream across all tabs.`);
     }
+
+    // Persist new simulated transaction to SQL database
+    try {
+      const url = getApiUrl('/api/transactions');
+      fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(newTxn)
+      }).catch(() => {
+        fetch('http://127.0.0.1:8000/api/transactions', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(newTxn)
+        }).catch(err => console.warn('Could not persist to SQL:', err));
+      });
+    } catch {}
   };
 
   // Called automatically whenever CSV/JSON batch analysis completes
@@ -186,8 +240,26 @@ function App() {
     showNotification(`⚡ ${reason} applied: Updated risk analysis across all ${updatedItems.length} transactions in every tab.`);
   };
 
-  // Revert back to standard initial demo transactions
-  const handleResetToDemo = () => {
+  // Revert back to standard initial demo transactions in SQL database
+  const handleResetToDemo = async () => {
+    try {
+      let res;
+      try {
+        res = await fetch(getApiUrl('/api/database/reset'), { method: 'POST' });
+      } catch {
+        res = await fetch('http://127.0.0.1:8000/api/database/reset', { method: 'POST' });
+      }
+      if (res && res.ok) {
+        const dbTxns = await fetchDbTransactions();
+        if (dbTxns) {
+          setSelectedTxnIds(new Set());
+          showNotification(`Reset SQL database to default demo dataset (${dbTxns.length} records) across all tabs.`);
+          return;
+        }
+      }
+    } catch (e) {
+      console.warn('Failed to reset SQL database:', e);
+    }
     setTransactions(initialTransactions);
     setActiveDataset({
       name: 'Default Demo Dataset',
@@ -205,12 +277,35 @@ function App() {
     setCurrentTab('TRANSACTIONS');
   };
 
-  // Global status update (Freeze/Approve)
-  const handleUpdateStatus = (txnId, newStatus) => {
+  // Global status update (Freeze/Approve) with SQL DB persistence
+  const handleUpdateStatus = async (txnId, newStatus) => {
     setTransactions((prev) =>
       prev.map((t) => (t.id === txnId ? { ...t, status: newStatus } : t))
     );
     showNotification(`Updated ${txnId} status to: ${newStatus}`);
+
+    try {
+      const url = getApiUrl(`/api/transactions/${encodeURIComponent(txnId)}/status`);
+      let res;
+      try {
+        res = await fetch(url, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ status: newStatus })
+        });
+      } catch {
+        res = await fetch(`http://127.0.0.1:8000/api/transactions/${encodeURIComponent(txnId)}/status`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ status: newStatus })
+        });
+      }
+      if (res && res.ok) {
+        console.log(`Persisted ${txnId} status update to SQL database.`);
+      }
+    } catch (e) {
+      console.warn('Failed to persist status change to SQL database:', e);
+    }
   };
 
   const toggleSelectTxn = (id) => {
@@ -222,32 +317,72 @@ function App() {
     });
   };
 
-  const handleQuarantineSelected = () => {
+  const handleQuarantineSelected = async () => {
     if (selectedTxnIds.size === 0) {
       showNotification('Please select at least one transaction to freeze.');
       return;
     }
+    const ids = Array.from(selectedTxnIds);
     setTransactions((prev) =>
       prev.map((t) => selectedTxnIds.has(t.id) ? { ...t, status: 'Blocked' } : t)
     );
-    showNotification(`Froze ${selectedTxnIds.size} transactions.`);
+    showNotification(`Froze ${selectedTxnIds.size} transactions in SQL database.`);
     setSelectedTxnIds(new Set());
+
+    for (const id of ids) {
+      try {
+        const url = getApiUrl(`/api/transactions/${encodeURIComponent(id)}/status`);
+        try {
+          await fetch(url, {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ status: 'Blocked' })
+          });
+        } catch {
+          await fetch(`http://127.0.0.1:8000/api/transactions/${encodeURIComponent(id)}/status`, {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ status: 'Blocked' })
+          });
+        }
+      } catch {}
+    }
   };
 
-  const handleApproveSelected = () => {
+  const handleApproveSelected = async () => {
     if (selectedTxnIds.size === 0) {
       showNotification('Please select at least one transaction to approve.');
       return;
     }
+    const ids = Array.from(selectedTxnIds);
     setTransactions((prev) =>
       prev.map((t) => selectedTxnIds.has(t.id) ? { ...t, status: 'Approved' } : t)
     );
-    showNotification(`Approved ${selectedTxnIds.size} transactions.`);
+    showNotification(`Approved ${selectedTxnIds.size} transactions in SQL database.`);
     setSelectedTxnIds(new Set());
+
+    for (const id of ids) {
+      try {
+        const url = getApiUrl(`/api/transactions/${encodeURIComponent(id)}/status`);
+        try {
+          await fetch(url, {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ status: 'Approved' })
+          });
+        } catch {
+          await fetch(`http://127.0.0.1:8000/api/transactions/${encodeURIComponent(id)}/status`, {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ status: 'Approved' })
+          });
+        }
+      } catch {}
+    }
   };
 
-  // Delete a single transaction by ID
-  const handleDeleteSingleTxn = (id) => {
+  // Delete a single transaction by ID with SQL DB removal
+  const handleDeleteSingleTxn = async (id) => {
     setTransactions((prev) => {
       const updated = prev.filter((t) => t.id !== id);
       setActiveDataset((d) => ({
@@ -268,11 +403,22 @@ function App() {
     if (selectedTxn && selectedTxn.id === id) {
       setSelectedTxn(null);
     }
-    showNotification(`Deleted transaction record ${id}.`);
+    showNotification(`Deleted transaction record ${id} from SQL database.`);
+
+    try {
+      let res;
+      try {
+        res = await fetch(getApiUrl(`/api/transactions/${encodeURIComponent(id)}`), { method: 'DELETE' });
+      } catch {
+        res = await fetch(`http://127.0.0.1:8000/api/transactions/${encodeURIComponent(id)}`, { method: 'DELETE' });
+      }
+    } catch (e) {
+      console.warn('Failed to delete from SQL DB:', e);
+    }
   };
 
-  // Delete all selected transactions
-  const handleDeleteSelected = () => {
+  // Delete all selected transactions with SQL DB removal
+  const handleDeleteSelected = async () => {
     if (selectedTxnIds.size === 0) {
       showNotification('Please select at least one transaction to delete.');
       return;
@@ -281,6 +427,7 @@ function App() {
     if (!window.confirm(`Are you sure you want to permanently delete ${count} selected transaction record${count > 1 ? 's' : ''}?`)) {
       return;
     }
+    const idsToDelete = Array.from(selectedTxnIds);
     setTransactions((prev) => {
       const updated = prev.filter((t) => !selectedTxnIds.has(t.id));
       setActiveDataset((d) => ({
@@ -294,11 +441,21 @@ function App() {
       setSelectedTxn(null);
     }
     setSelectedTxnIds(new Set());
-    showNotification(`Successfully deleted ${count} transaction record${count > 1 ? 's' : ''}.`);
+    showNotification(`Successfully deleted ${count} transaction record${count > 1 ? 's' : ''} from SQL database.`);
+
+    for (const id of idsToDelete) {
+      try {
+        try {
+          await fetch(getApiUrl(`/api/transactions/${encodeURIComponent(id)}`), { method: 'DELETE' });
+        } catch {
+          await fetch(`http://127.0.0.1:8000/api/transactions/${encodeURIComponent(id)}`, { method: 'DELETE' });
+        }
+      } catch {}
+    }
   };
 
-  // Clear all transaction history
-  const handleClearAllTransactions = () => {
+  // Clear all transaction history from SQL DB
+  const handleClearAllTransactions = async () => {
     if (transactions.length === 0) {
       showNotification('Transaction history is already empty.');
       return;
@@ -315,13 +472,22 @@ function App() {
       updatedAt: new Date().toLocaleTimeString(),
       totalCount: 0
     });
-    showNotification('All transaction history cleared across all tabs. Click "Reset Demo" at any time to restore demo telemetry.');
+    showNotification('All transaction history cleared across all tabs and purged from SQL database. Click "Reset Demo" at any time to restore demo telemetry.');
+
+    try {
+      try {
+        await fetch(getApiUrl('/api/transactions'), { method: 'DELETE' });
+      } catch {
+        await fetch('http://127.0.0.1:8000/api/transactions', { method: 'DELETE' });
+      }
+    } catch (e) {
+      console.warn('Failed to clear SQL database:', e);
+    }
   };
 
   // Filtered transactions for the Transactions tab
   const filteredTransactions = useMemo(() => {
     return transactions.filter((t) => {
-      if (activeFilter === 'CRITICAL' && t.fraudProbability < 85) return false;
       if (activeFilter === 'HIGH_RISK' && t.risk !== 'High Risk') return false;
       if (activeFilter === 'MEDIUM_RISK' && t.risk !== 'Medium Risk') return false;
       if (activeFilter === 'LOW_RISK' && t.risk !== 'Low Risk') return false;
@@ -400,10 +566,19 @@ function App() {
 
   return (
     <div className="carbon-app-layout">
+      {/* Mobile Drawer Backdrop */}
+      {isMobileMenuOpen && (
+        <div
+          className="sidebar-mobile-backdrop"
+          onClick={() => setIsMobileMenuOpen(false)}
+          aria-label="Close navigation"
+        />
+      )}
+
       {/* ==========================================================================
           1. SENTINEL NAVIGATION SIDEBAR
           ========================================================================== */}
-      <aside className="carbon-sidebar">
+      <aside className={`carbon-sidebar ${isMobileMenuOpen ? 'sidebar-mobile-visible' : ''}`}>
         <div className="sidebar-header">
           {/* Brand */}
           <div className="sidebar-brand">
@@ -418,6 +593,15 @@ function App() {
               <span className="brand-title">Sentinel</span>
               <span className="brand-subtitle">Online Fraud Detector</span>
             </div>
+            {/* Mobile close button */}
+            <button
+              type="button"
+              className="sidebar-mobile-close-btn"
+              onClick={() => setIsMobileMenuOpen(false)}
+              aria-label="Close navigation"
+            >
+              <span className="material-symbols-outlined">close</span>
+            </button>
           </div>
 
           <div className="sidebar-divider"></div>
@@ -427,7 +611,7 @@ function App() {
             <button
               type="button"
               className={`sidebar-nav-item ${currentTab === 'DASHBOARD' ? 'active' : ''}`}
-              onClick={() => setCurrentTab('DASHBOARD')}
+              onClick={() => { setCurrentTab('DASHBOARD'); setIsMobileMenuOpen(false); }}
             >
               <div className="nav-item-left">
                 <span className="material-symbols-outlined">dashboard</span>
@@ -438,7 +622,7 @@ function App() {
             <button
               type="button"
               className={`sidebar-nav-item ${currentTab === 'TRANSACTIONS' ? 'active' : ''}`}
-              onClick={() => setCurrentTab('TRANSACTIONS')}
+              onClick={() => { setCurrentTab('TRANSACTIONS'); setIsMobileMenuOpen(false); }}
             >
               <div className="nav-item-left">
                 <span className="material-symbols-outlined">receipt_long</span>
@@ -452,7 +636,7 @@ function App() {
             <button
               type="button"
               className={`sidebar-nav-item ${currentTab === 'ENTITIES' ? 'active' : ''}`}
-              onClick={() => setCurrentTab('ENTITIES')}
+              onClick={() => { setCurrentTab('ENTITIES'); setIsMobileMenuOpen(false); }}
             >
               <div className="nav-item-left">
                 <span className="material-symbols-outlined">hub</span>
@@ -460,12 +644,10 @@ function App() {
               </div>
             </button>
 
-            {/* Detection Rules tab hidden from sidebar as requested */}
-
             <button
               type="button"
               className={`sidebar-nav-item ${currentTab === 'ANALYTICS' ? 'active' : ''}`}
-              onClick={() => setCurrentTab('ANALYTICS')}
+              onClick={() => { setCurrentTab('ANALYTICS'); setIsMobileMenuOpen(false); }}
             >
               <div className="nav-item-left">
                 <span className="material-symbols-outlined">monitoring</span>
@@ -476,7 +658,7 @@ function App() {
             <button
               type="button"
               className={`sidebar-nav-item ${currentTab === 'BATCH' ? 'active' : ''}`}
-              onClick={() => setCurrentTab('BATCH')}
+              onClick={() => { setCurrentTab('BATCH'); setIsMobileMenuOpen(false); }}
             >
               <div className="nav-item-left">
                 <span className="material-symbols-outlined">upload_file</span>
@@ -491,7 +673,7 @@ function App() {
           <button
             type="button"
             className="md-btn-upgrade-pro"
-            onClick={() => setIsModalOpen(true)}
+            onClick={() => { setIsModalOpen(true); setIsMobileMenuOpen(false); }}
           >
             Test Transactions
           </button>
@@ -503,6 +685,16 @@ function App() {
           ========================================================================== */}
       <header className="carbon-header">
         <div className="header-left">
+          {/* Mobile Hamburger Menu Toggle */}
+          <button
+            type="button"
+            className="mobile-hamburger-btn"
+            onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
+            aria-label="Toggle navigation menu"
+          >
+            <span className="material-symbols-outlined">{isMobileMenuOpen ? 'close' : 'menu'}</span>
+          </button>
+
           <div className="md-breadcrumbs-wrap">
             <div className="md-breadcrumb-trail">
               <span className="md-breadcrumb-root">Pages</span>
@@ -519,7 +711,7 @@ function App() {
           <div className="md-search-bar">
             <input
               type="text"
-              placeholder="Type here..."
+              placeholder="Search..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
             />
@@ -532,6 +724,13 @@ function App() {
                 ✕
               </button>
             )}
+          </div>
+
+          {/* SQL Database Status Indicator */}
+          <div className="sql-db-header-badge" title={`SQL Database: SQLite (ACID compliant) • Status: ${backendStatus === 'connected' ? 'Connected' : 'Local Fallback'}`}>
+            <span className={`db-dot ${backendStatus === 'connected' ? 'db-dot-connected' : 'db-dot-offline'}`}></span>
+            <span className="db-label">SQL DB:</span>
+            <span className="db-name">{backendStatus === 'connected' ? 'SQLite' : 'Offline'}</span>
           </div>
 
           {/* Active Dataset Status Pill */}
@@ -654,21 +853,10 @@ function App() {
 
                   <button
                     type="button"
-                    className={`filter-pill-btn ${activeFilter === 'CRITICAL' ? 'active' : ''}`}
-                    onClick={() => setActiveFilter('CRITICAL')}
-                  >
-                    <span style={{ color: 'var(--carbon-red)' }}>●</span>
-                    <span>Critical (&gt;85%)</span>
-                    <span className="filter-pill-count critical">
-                      {transactions.filter(t => t.fraudProbability >= 85).length}
-                    </span>
-                  </button>
-
-                  <button
-                    type="button"
                     className={`filter-pill-btn ${activeFilter === 'HIGH_RISK' ? 'active' : ''}`}
                     onClick={() => setActiveFilter('HIGH_RISK')}
                   >
+                    <span style={{ color: 'var(--carbon-red)' }}>●</span>
                     <span>High Risk ({transactions.filter(t => t.risk === 'High Risk').length})</span>
                   </button>
 
@@ -1009,6 +1197,50 @@ function App() {
         onUpdateStatus={handleUpdateStatus}
         onDeleteTxn={handleDeleteSingleTxn}
       />
+
+      {/* Responsive Mobile Bottom Navigation Bar */}
+      <nav className="mobile-bottom-nav" aria-label="Mobile Navigation">
+        <button
+          type="button"
+          className={`mobile-nav-item ${currentTab === 'DASHBOARD' ? 'active' : ''}`}
+          onClick={() => setCurrentTab('DASHBOARD')}
+        >
+          <span className="material-symbols-outlined">dashboard</span>
+          <span>Dashboard</span>
+        </button>
+        <button
+          type="button"
+          className={`mobile-nav-item ${currentTab === 'TRANSACTIONS' ? 'active' : ''}`}
+          onClick={() => setCurrentTab('TRANSACTIONS')}
+        >
+          <span className="material-symbols-outlined">receipt_long</span>
+          <span>Txns</span>
+        </button>
+        <button
+          type="button"
+          className={`mobile-nav-item ${currentTab === 'ENTITIES' ? 'active' : ''}`}
+          onClick={() => setCurrentTab('ENTITIES')}
+        >
+          <span className="material-symbols-outlined">hub</span>
+          <span>Network</span>
+        </button>
+        <button
+          type="button"
+          className={`mobile-nav-item ${currentTab === 'ANALYTICS' ? 'active' : ''}`}
+          onClick={() => setCurrentTab('ANALYTICS')}
+        >
+          <span className="material-symbols-outlined">monitoring</span>
+          <span>Analytics</span>
+        </button>
+        <button
+          type="button"
+          className={`mobile-nav-item ${currentTab === 'BATCH' ? 'active' : ''}`}
+          onClick={() => setCurrentTab('BATCH')}
+        >
+          <span className="material-symbols-outlined">upload_file</span>
+          <span>Batch</span>
+        </button>
+      </nav>
     </div>
   );
 }
