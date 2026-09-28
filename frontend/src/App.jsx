@@ -8,11 +8,14 @@ import FraudAssessmentModal from './FraudAssessmentModal';
 import TransactionInspectorModal from './TransactionInspectorModal';
 import { initialTransactions } from './mockTransactions';
 import sentinelLogo from './assets/logo.png';
+import VaultShieldHero from './VaultShieldHero';
 import './App.css';
 
 function App() {
-  // Navigation tabs: 'DASHBOARD' | 'TRANSACTIONS' | 'ENTITIES' | 'RULES' | 'ANALYTICS' | 'BATCH'
-  const [currentTab, setCurrentTab] = useState('DASHBOARD');
+  // Navigation tabs: 'LANDING' | 'DASHBOARD' | 'TRANSACTIONS' | 'ENTITIES' | 'RULES' | 'ANALYTICS' | 'BATCH'
+  const [currentTab, setCurrentTab] = useState(() => {
+    return window.location.hash === '#dashboard' ? 'DASHBOARD' : 'LANDING';
+  });
 
   // Load transactions from localStorage or fallback to default initial transactions
   const [transactions, setTransactions] = useState(() => {
@@ -44,8 +47,6 @@ function App() {
 
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [selectedTxn, setSelectedTxn] = useState(null);
-  const [backendStatus, setBackendStatus] = useState('checking');
-  const [dbStatus, setDbStatus] = useState({ status: 'checking', engine: 'SQLite' });
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [activeFilter, setActiveFilter] = useState('ALL');
   const [searchQuery, setSearchQuery] = useState('');
@@ -106,7 +107,6 @@ function App() {
 
   // Backend & SQL Database Health check
   const checkBackendHealth = async () => {
-    setBackendStatus('checking');
     try {
       let res;
       try {
@@ -114,24 +114,25 @@ function App() {
       } catch {
         res = await fetch('http://127.0.0.1:8000/health');
       }
-
-      if (res && res.ok) {
-        const data = await res.json();
-        setBackendStatus('connected');
-        if (data.database) {
-          setDbStatus(data.database);
-        }
-      } else {
-        setBackendStatus('offline');
-      }
-    } catch {
-      setBackendStatus('offline');
-    }
+    } catch {}
   };
 
   useEffect(() => {
     checkBackendHealth();
     fetchDbTransactions();
+
+    const handleHashChange = () => {
+      const hash = window.location.hash.toLowerCase();
+      if (hash === '#dashboard') setCurrentTab('DASHBOARD');
+      else if (hash === '#landing') setCurrentTab('LANDING');
+      else if (hash === '#transactions') setCurrentTab('TRANSACTIONS');
+      else if (hash === '#entities') setCurrentTab('ENTITIES');
+      else if (hash === '#rules') setCurrentTab('RULES');
+      else if (hash === '#analytics') setCurrentTab('ANALYTICS');
+      else if (hash === '#batch') setCurrentTab('BATCH');
+    };
+    window.addEventListener('hashchange', handleHashChange);
+    return () => window.removeEventListener('hashchange', handleHashChange);
   }, []);
 
   const showNotification = (msg) => {
@@ -564,6 +565,36 @@ function App() {
 
   const currentMeta = tabMetadata[currentTab] || tabMetadata.DASHBOARD;
 
+  if (currentTab === 'LANDING') {
+    return (
+      <>
+        <VaultShieldHero
+          onEnterDashboard={() => {
+            setCurrentTab('DASHBOARD');
+            window.location.hash = '#dashboard';
+          }}
+          onNavigateToTab={(tab) => {
+            setCurrentTab(tab);
+            window.location.hash = `#${tab.toLowerCase()}`;
+          }}
+          onOpenSignIn={() => {
+            setCurrentTab('DASHBOARD');
+            window.location.hash = '#dashboard';
+          }}
+          onOpenDemo={() => {
+            setIsModalOpen(true);
+          }}
+        />
+        {isModalOpen && (
+          <FraudAssessmentModal
+            onClose={() => setIsModalOpen(false)}
+            onScored={handlePredictionResult}
+          />
+        )}
+      </>
+    );
+  }
+
   return (
     <div className="carbon-app-layout">
       {/* Mobile Drawer Backdrop */}
@@ -581,7 +612,12 @@ function App() {
       <aside className={`carbon-sidebar ${isMobileMenuOpen ? 'sidebar-mobile-visible' : ''}`}>
         <div className="sidebar-header">
           {/* Brand */}
-          <div className="sidebar-brand">
+          <div
+            className="sidebar-brand"
+            onClick={() => { setCurrentTab('LANDING'); window.location.hash = '#landing'; setIsMobileMenuOpen(false); }}
+            style={{ cursor: 'pointer' }}
+            title="Return to Sentinel Landing Page"
+          >
             <div className="brand-emblem">
               <img
                 src={sentinelLogo}
@@ -597,7 +633,7 @@ function App() {
             <button
               type="button"
               className="sidebar-mobile-close-btn"
-              onClick={() => setIsMobileMenuOpen(false)}
+              onClick={(e) => { e.stopPropagation(); setIsMobileMenuOpen(false); }}
               aria-label="Close navigation"
             >
               <span className="material-symbols-outlined">close</span>
@@ -606,7 +642,7 @@ function App() {
 
           <div className="sidebar-divider"></div>
 
-          {/* Navigation Items (Dashboard, Transactions, Entity Network, Detection Rules, Visual Analytics, Batch Upload) */}
+          {/* Navigation Items (Dashboard, Transactions, Entity Network, Visual Analytics, Batch Upload) */}
           <nav className="sidebar-nav">
             <button
               type="button"
@@ -726,13 +762,6 @@ function App() {
             )}
           </div>
 
-          {/* SQL Database Status Indicator */}
-          <div className="sql-db-header-badge" title={`SQL Database: SQLite (ACID compliant) • Status: ${backendStatus === 'connected' ? 'Connected' : 'Local Fallback'}`}>
-            <span className={`db-dot ${backendStatus === 'connected' ? 'db-dot-connected' : 'db-dot-offline'}`}></span>
-            <span className="db-label">SQL DB:</span>
-            <span className="db-name">{backendStatus === 'connected' ? 'SQLite' : 'Offline'}</span>
-          </div>
-
           {/* Active Dataset Status Pill */}
           <div className="active-dataset-header-pill" title={`Active Dataset: ${activeDataset.name} (Updated: ${activeDataset.updatedAt}) • Click Reset to restore demo seed`}>
             <span className="dataset-dot"></span>
@@ -750,16 +779,6 @@ function App() {
               </button>
             )}
           </div>
-
-          {/* Test Transaction Action Button */}
-          <button
-            type="button"
-            className="md-btn-online-builder"
-            onClick={() => setIsModalOpen(true)}
-            title="Open Interactive Simulator"
-          >
-            Test Transaction
-          </button>
         </div>
       </header>
 

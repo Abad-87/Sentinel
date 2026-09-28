@@ -1,9 +1,16 @@
-/* ==========================================================================
-   Creative Tim Material Dashboard 2 Design Tokens & Base Theme
-   Clean light theme: #f0f2f5 bg, crisp white cards, charcoal gradients, emerald green charts
-   ========================================================================== */
+/* @import "tailwindcss"; */
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap');
 
+/* ==========================================================================
+   VaultShield Design Tokens & System Variables
+   ========================================================================== */
 :root {
+  --font-heading: 'Helvetica Now Display Bold', sans-serif;
+  --font-body: 'Inter', sans-serif;
+  --color-text: #192837;
+  --color-accent: #7342E2;
+  --color-login-bg: #F2F2EE;
+
   /* Material Dashboard 2 Color Palette */
   --md-bg: #f0f2f5;
   --md-card-bg: #ffffff;
