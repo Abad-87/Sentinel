@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
+import { Home } from 'lucide-react';
 import ExecutiveIntelligenceView from './ExecutiveIntelligenceView';
 import EntityDossierView from './EntityDossierView';
 import DetectionRulesView from './DetectionRulesView';
@@ -11,11 +12,51 @@ import sentinelLogo from './assets/logo.png';
 import VaultShieldHero from './VaultShieldHero';
 import './App.css';
 
+// Resolve tab name from location hash reliably
+const parseHashToTab = (hashStr) => {
+  const raw = hashStr !== undefined ? hashStr : (typeof window !== 'undefined' ? window.location.hash : '');
+  const clean = (raw || '').toLowerCase().replace(/^#\/?/, '').split('?')[0].split('/')[0];
+  switch (clean) {
+    case 'dashboard':
+      return 'DASHBOARD';
+    case 'transactions':
+      return 'TRANSACTIONS';
+    case 'entities':
+      return 'ENTITIES';
+    case 'rules':
+      return 'RULES';
+    case 'analytics':
+      return 'ANALYTICS';
+    case 'batch':
+      return 'BATCH';
+    case 'landing':
+    case 'demo':
+    case 'features':
+    case 'how-it-works':
+    case 'about':
+    case '':
+    case '#':
+    default:
+      return 'LANDING';
+  }
+};
+
 function App() {
   // Navigation tabs: 'LANDING' | 'DASHBOARD' | 'TRANSACTIONS' | 'ENTITIES' | 'RULES' | 'ANALYTICS' | 'BATCH'
-  const [currentTab, setCurrentTab] = useState(() => {
-    return window.location.hash === '#dashboard' ? 'DASHBOARD' : 'LANDING';
-  });
+  const [currentTab, setCurrentTab] = useState(() => parseHashToTab(window.location.hash));
+
+  // Centralized tab navigation that keeps URL hash, browser history, and view synchronized
+  const navigateToTab = (tab) => {
+    const targetHash = tab === 'LANDING' ? '#landing' : `#${tab.toLowerCase()}`;
+    if (window.location.hash !== targetHash) {
+      window.location.hash = targetHash;
+    }
+    setCurrentTab(tab);
+    setIsMobileMenuOpen(false);
+    if (tab === 'LANDING') {
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    }
+  };
 
   // Load transactions from localStorage or fallback to default initial transactions
   const [transactions, setTransactions] = useState(() => {
@@ -55,8 +96,9 @@ function App() {
 
   // API URL resolver helper
   const getApiUrl = (endpoint) => {
-    const apiBase = import.meta.env.VITE_API_BASE_URL || '';
-    return apiBase ? `${apiBase}${endpoint}` : endpoint;
+    const apiBase = (import.meta.env.VITE_API_BASE_URL || '').replace(/\/+$/, '');
+    const cleanEndpoint = endpoint.startsWith('/') ? endpoint : `/${endpoint}`;
+    return apiBase ? `${apiBase}${cleanEndpoint}` : cleanEndpoint;
   };
 
   // Automatically persist transactions to localStorage
@@ -121,18 +163,18 @@ function App() {
     checkBackendHealth();
     fetchDbTransactions();
 
-    const handleHashChange = () => {
-      const hash = window.location.hash.toLowerCase();
-      if (hash === '#dashboard') setCurrentTab('DASHBOARD');
-      else if (hash === '#landing') setCurrentTab('LANDING');
-      else if (hash === '#transactions') setCurrentTab('TRANSACTIONS');
-      else if (hash === '#entities') setCurrentTab('ENTITIES');
-      else if (hash === '#rules') setCurrentTab('RULES');
-      else if (hash === '#analytics') setCurrentTab('ANALYTICS');
-      else if (hash === '#batch') setCurrentTab('BATCH');
+    const handleLocationChange = () => {
+      const targetTab = parseHashToTab(window.location.hash);
+      setCurrentTab(targetTab);
     };
-    window.addEventListener('hashchange', handleHashChange);
-    return () => window.removeEventListener('hashchange', handleHashChange);
+
+    window.addEventListener('hashchange', handleLocationChange);
+    window.addEventListener('popstate', handleLocationChange);
+
+    return () => {
+      window.removeEventListener('hashchange', handleLocationChange);
+      window.removeEventListener('popstate', handleLocationChange);
+    };
   }, []);
 
   const showNotification = (msg) => {
@@ -275,7 +317,7 @@ function App() {
   // Manual import trigger for backwards compatibility
   const handleImportBatch = (batchItems) => {
     handleBatchAnalyzed(batchItems, { fileName: 'Imported Batch', mode: 'append' });
-    setCurrentTab('TRANSACTIONS');
+    navigateToTab('TRANSACTIONS');
   };
 
   // Global status update (Freeze/Approve) with SQL DB persistence
@@ -570,19 +612,13 @@ function App() {
       <>
         <VaultShieldHero
           onEnterDashboard={() => {
-            setCurrentTab('DASHBOARD');
-            window.location.hash = '#dashboard';
+            navigateToTab('DASHBOARD');
           }}
           onNavigateToTab={(tab) => {
-            setCurrentTab(tab);
-            window.location.hash = `#${tab.toLowerCase()}`;
+            navigateToTab(tab);
           }}
           onOpenSignIn={() => {
-            setCurrentTab('DASHBOARD');
-            window.location.hash = '#dashboard';
-          }}
-          onOpenDemo={() => {
-            setIsModalOpen(true);
+            navigateToTab('DASHBOARD');
           }}
         />
         {isModalOpen && (
@@ -614,7 +650,7 @@ function App() {
           {/* Brand */}
           <div
             className="sidebar-brand"
-            onClick={() => { setCurrentTab('LANDING'); window.location.hash = '#landing'; setIsMobileMenuOpen(false); }}
+            onClick={() => navigateToTab('LANDING')}
             style={{ cursor: 'pointer' }}
             title="Return to Sentinel Landing Page"
           >
@@ -647,7 +683,7 @@ function App() {
             <button
               type="button"
               className={`sidebar-nav-item ${currentTab === 'DASHBOARD' ? 'active' : ''}`}
-              onClick={() => { setCurrentTab('DASHBOARD'); setIsMobileMenuOpen(false); }}
+              onClick={() => navigateToTab('DASHBOARD')}
             >
               <div className="nav-item-left">
                 <span className="material-symbols-outlined">dashboard</span>
@@ -658,7 +694,7 @@ function App() {
             <button
               type="button"
               className={`sidebar-nav-item ${currentTab === 'TRANSACTIONS' ? 'active' : ''}`}
-              onClick={() => { setCurrentTab('TRANSACTIONS'); setIsMobileMenuOpen(false); }}
+              onClick={() => navigateToTab('TRANSACTIONS')}
             >
               <div className="nav-item-left">
                 <span className="material-symbols-outlined">receipt_long</span>
@@ -672,7 +708,7 @@ function App() {
             <button
               type="button"
               className={`sidebar-nav-item ${currentTab === 'ENTITIES' ? 'active' : ''}`}
-              onClick={() => { setCurrentTab('ENTITIES'); setIsMobileMenuOpen(false); }}
+              onClick={() => navigateToTab('ENTITIES')}
             >
               <div className="nav-item-left">
                 <span className="material-symbols-outlined">hub</span>
@@ -683,7 +719,7 @@ function App() {
             <button
               type="button"
               className={`sidebar-nav-item ${currentTab === 'ANALYTICS' ? 'active' : ''}`}
-              onClick={() => { setCurrentTab('ANALYTICS'); setIsMobileMenuOpen(false); }}
+              onClick={() => navigateToTab('ANALYTICS')}
             >
               <div className="nav-item-left">
                 <span className="material-symbols-outlined">monitoring</span>
@@ -694,7 +730,7 @@ function App() {
             <button
               type="button"
               className={`sidebar-nav-item ${currentTab === 'BATCH' ? 'active' : ''}`}
-              onClick={() => { setCurrentTab('BATCH'); setIsMobileMenuOpen(false); }}
+              onClick={() => navigateToTab('BATCH')}
             >
               <div className="nav-item-left">
                 <span className="material-symbols-outlined">upload_file</span>
@@ -706,6 +742,15 @@ function App() {
 
         {/* Sidebar Footer Action */}
         <div className="sidebar-footer-actions">
+          <button
+            type="button"
+            className="md-btn-vault-home"
+            onClick={() => navigateToTab('LANDING')}
+            title="Return to Vault Home Landing Page"
+          >
+            <Home className="w-4 h-4 mr-2" size={16} />
+            <span>Vault Home</span>
+          </button>
           <button
             type="button"
             className="md-btn-upgrade-pro"
@@ -809,7 +854,7 @@ function App() {
             onResetToDemo={handleResetToDemo}
             onUpdateStatus={handleUpdateStatus}
             onSelectTxn={setSelectedTxn}
-            onNavigateToTab={setCurrentTab}
+            onNavigateToTab={navigateToTab}
             onShowToast={showNotification}
           />
         )}
@@ -829,7 +874,7 @@ function App() {
                 <button
                   type="button"
                   className="btn-sync-tab-jump"
-                  onClick={() => setCurrentTab('BATCH')}
+                  onClick={() => navigateToTab('BATCH')}
                   style={{ padding: '3px 8px', fontSize: '11px' }}
                 >
                   <span className="material-symbols-outlined" style={{ fontSize: '14px' }}>upload_file</span>
@@ -1018,7 +1063,7 @@ function App() {
                                 <button
                                   type="button"
                                   className="btn-empty-batch"
-                                  onClick={() => setCurrentTab('BATCH')}
+                                  onClick={() => navigateToTab('BATCH')}
                                 >
                                   <span className="material-symbols-outlined" style={{ fontSize: '16px' }}>upload_file</span>
                                   <span>Batch Ingest</span>
@@ -1174,7 +1219,7 @@ function App() {
             transactions={transactions}
             activeDataset={activeDataset}
             onUpdateAllTransactions={handleUpdateAllTransactions}
-            onNavigateToTab={setCurrentTab}
+            onNavigateToTab={navigateToTab}
             onShowToast={showNotification}
           />
         )}
@@ -1195,7 +1240,7 @@ function App() {
             activeDataset={activeDataset}
             onBatchAnalyzed={handleBatchAnalyzed}
             onImportToFeed={handleImportBatch}
-            onNavigateToTab={setCurrentTab}
+            onNavigateToTab={navigateToTab}
             onResetToDemo={handleResetToDemo}
             onShowToast={showNotification}
           />
@@ -1222,7 +1267,7 @@ function App() {
         <button
           type="button"
           className={`mobile-nav-item ${currentTab === 'DASHBOARD' ? 'active' : ''}`}
-          onClick={() => setCurrentTab('DASHBOARD')}
+          onClick={() => navigateToTab('DASHBOARD')}
         >
           <span className="material-symbols-outlined">dashboard</span>
           <span>Dashboard</span>
@@ -1230,7 +1275,7 @@ function App() {
         <button
           type="button"
           className={`mobile-nav-item ${currentTab === 'TRANSACTIONS' ? 'active' : ''}`}
-          onClick={() => setCurrentTab('TRANSACTIONS')}
+          onClick={() => navigateToTab('TRANSACTIONS')}
         >
           <span className="material-symbols-outlined">receipt_long</span>
           <span>Txns</span>
@@ -1238,7 +1283,7 @@ function App() {
         <button
           type="button"
           className={`mobile-nav-item ${currentTab === 'ENTITIES' ? 'active' : ''}`}
-          onClick={() => setCurrentTab('ENTITIES')}
+          onClick={() => navigateToTab('ENTITIES')}
         >
           <span className="material-symbols-outlined">hub</span>
           <span>Network</span>
@@ -1246,7 +1291,7 @@ function App() {
         <button
           type="button"
           className={`mobile-nav-item ${currentTab === 'ANALYTICS' ? 'active' : ''}`}
-          onClick={() => setCurrentTab('ANALYTICS')}
+          onClick={() => navigateToTab('ANALYTICS')}
         >
           <span className="material-symbols-outlined">monitoring</span>
           <span>Analytics</span>
@@ -1254,7 +1299,7 @@ function App() {
         <button
           type="button"
           className={`mobile-nav-item ${currentTab === 'BATCH' ? 'active' : ''}`}
-          onClick={() => setCurrentTab('BATCH')}
+          onClick={() => navigateToTab('BATCH')}
         >
           <span className="material-symbols-outlined">upload_file</span>
           <span>Batch</span>

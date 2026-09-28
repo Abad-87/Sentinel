@@ -830,6 +830,363 @@ html {
 }
 
 /* ==========================================================================
+   4B. REQUEST A DEMO SECTION (INTERACTIVE TWO-COLUMN ENTERPRISE CARD)
+   ========================================================================== */
+.sentinel-demo-bg {
+  background: #FDFDFD;
+  border-top: 1px solid rgba(25, 40, 55, 0.06);
+}
+
+.sentinel-demo-card {
+  position: relative;
+  max-width: 1060px;
+  margin: 0 auto;
+  background: #ffffff;
+  border: 1px solid rgba(25, 40, 55, 0.1);
+  border-radius: 24px;
+  box-shadow: 0 20px 50px -12px rgba(15, 23, 42, 0.12), 0 4px 16px rgba(15, 23, 42, 0.04);
+  padding: 0;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  box-sizing: border-box;
+  overflow: hidden;
+}
+
+@media (max-width: 920px) {
+  .sentinel-demo-card {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* Left Column: Premium Light Green Panel */
+.sentinel-demo-info-col {
+  background: radial-gradient(circle at 15% 20%, rgba(255, 255, 255, 0.15) 0%, transparent 45%),
+              linear-gradient(150deg, #047857 0%, #059669 45%, #10b981 100%);
+  color: #ffffff;
+  padding: 52px 48px;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  gap: 36px;
+  box-sizing: border-box;
+  position: relative;
+}
+
+@media (max-width: 920px) {
+  .sentinel-demo-info-col {
+    padding: 40px 28px;
+    gap: 28px;
+  }
+}
+
+.sentinel-demo-info-top {
+  display: flex;
+  flex-direction: column;
+}
+
+.sentinel-demo-headline {
+  font-family: var(--font-heading);
+  font-size: clamp(2rem, 3.4vw, 2.55rem);
+  font-weight: 800;
+  line-height: 1.15;
+  color: #ffffff;
+  letter-spacing: -0.02em;
+  margin: 0 0 16px 0;
+}
+
+.sentinel-demo-subheadline {
+  font-family: var(--font-body);
+  font-size: 1.02rem;
+  line-height: 1.6;
+  color: rgba(255, 255, 255, 0.94);
+  margin: 0 0 32px 0;
+}
+
+.sentinel-demo-bullets {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+
+.sentinel-demo-bullet {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  font-size: 1.05rem;
+  font-weight: 600;
+  color: #ffffff;
+}
+
+.sentinel-demo-check-icon {
+  color: #ffffff;
+  flex-shrink: 0;
+}
+
+.sentinel-demo-trust-badges {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  padding-top: 24px;
+  border-top: 1px solid rgba(255, 255, 255, 0.22);
+}
+
+.sentinel-demo-trust-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 14px;
+  border-radius: 9999px;
+  background: rgba(255, 255, 255, 0.16);
+  border: 1px solid rgba(255, 255, 255, 0.3);
+  backdrop-filter: blur(8px);
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: #ffffff;
+}
+
+.sentinel-demo-badge-icon {
+  color: #ffffff;
+}
+
+/* Right Column: Completely White Panel */
+.sentinel-demo-form-col {
+  background: #ffffff;
+  padding: 52px 48px;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  box-sizing: border-box;
+}
+
+@media (max-width: 920px) {
+  .sentinel-demo-form-col {
+    padding: 40px 28px;
+  }
+}
+
+.sentinel-demo-form {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  box-sizing: border-box;
+  width: 100%;
+}
+
+.sentinel-demo-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.sentinel-demo-label {
+  font-size: 0.88rem;
+  font-weight: 600;
+  color: #374151;
+  letter-spacing: -0.01em;
+}
+
+.sentinel-demo-input,
+.sentinel-demo-select {
+  background: #ffffff;
+  border: 1.5px solid #d1d5db;
+  border-radius: 8px;
+  padding: 12px 14px;
+  font-size: 0.95rem;
+  color: #111827;
+  font-family: inherit;
+  transition: all 0.2s ease;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.sentinel-demo-select {
+  cursor: pointer;
+  appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%23374151' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 14px center;
+  background-size: 16px;
+  padding-right: 38px;
+}
+
+.sentinel-demo-select option {
+  background: #ffffff;
+  color: #111827;
+}
+
+.sentinel-demo-input:focus,
+.sentinel-demo-select:focus {
+  border-color: #059669;
+  box-shadow: 0 0 0 3px rgba(16, 185, 129, 0.2);
+  outline: none;
+}
+
+.sentinel-demo-input::placeholder {
+  color: #9ca3af;
+}
+
+.sentinel-demo-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+
+@media (max-width: 480px) {
+  .sentinel-demo-row {
+    grid-template-columns: 1fr;
+  }
+}
+
+.sentinel-demo-submit-btn {
+  background: #0f172a;
+  color: #ffffff;
+  font-weight: 700;
+  font-size: 1.02rem;
+  border-radius: 8px;
+  padding: 14px 20px;
+  border: none;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  box-shadow: 0 4px 14px rgba(15, 23, 42, 0.16);
+  transition: all 0.2s ease;
+  margin-top: 6px;
+  font-family: inherit;
+  width: 100%;
+}
+
+.sentinel-demo-submit-btn:hover:not(:disabled) {
+  background: #1e293b;
+  transform: translateY(-1px);
+  box-shadow: 0 6px 20px rgba(15, 23, 42, 0.24);
+}
+
+.sentinel-demo-submit-btn:active:not(:disabled) {
+  transform: translateY(0);
+}
+
+.sentinel-demo-submit-btn:disabled {
+  opacity: 0.7;
+  cursor: not-allowed;
+}
+
+.sentinel-demo-disclaimer {
+  font-size: 0.78rem;
+  color: #6b7280;
+  text-align: center;
+  margin: 4px 0 0 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  line-height: 1.4;
+}
+
+/* Success Confirmation Box (Clean White Aesthetic) */
+.sentinel-demo-success-box {
+  background: #ffffff;
+  border: 1px solid #e5e7eb;
+  border-radius: 16px;
+  padding: 40px 24px;
+  text-align: center;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-height: 400px;
+  box-sizing: border-box;
+}
+
+.sentinel-demo-success-icon-wrap {
+  width: 68px;
+  height: 68px;
+  border-radius: 50%;
+  background: #ecfdf5;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-bottom: 20px;
+  border: 1px solid #a7f3d0;
+}
+
+.sentinel-demo-success-title {
+  font-family: var(--font-heading);
+  font-size: 1.45rem;
+  font-weight: 800;
+  color: #111827;
+  margin: 0 0 10px 0;
+}
+
+.sentinel-demo-success-desc {
+  font-size: 0.95rem;
+  line-height: 1.6;
+  color: #4b5563;
+  margin: 0 0 24px 0;
+  max-width: 400px;
+}
+
+.sentinel-demo-success-details {
+  width: 100%;
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 12px;
+  padding: 16px 20px;
+  margin-bottom: 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  text-align: left;
+}
+
+.sentinel-demo-success-item {
+  display: flex;
+  justify-content: space-between;
+  font-size: 0.85rem;
+}
+
+.sentinel-demo-success-label {
+  color: #64748b;
+}
+
+.sentinel-demo-success-val {
+  color: #0f172a;
+  font-weight: 600;
+  font-family: 'IBM Plex Mono', monospace;
+}
+
+.sentinel-demo-reset-btn {
+  background: #0f172a;
+  color: #ffffff;
+  border: none;
+  border-radius: 8px;
+  padding: 10px 20px;
+  font-size: 0.88rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.sentinel-demo-reset-btn:hover {
+  background: #1e293b;
+}
+
+.sentinel-spinner {
+  animation: sentinel-spin 1s linear infinite;
+}
+
+@keyframes sentinel-spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* ==========================================================================
    5. ABOUT SENTINEL SECTION (MISSION & STATS)
    ========================================================================== */
 .sentinel-about-bg {

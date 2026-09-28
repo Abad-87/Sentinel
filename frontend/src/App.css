@@ -210,6 +210,61 @@
   background: rgba(52, 71, 103, 0.06);
 }
 
+.md-btn-vault-home {
+  background: linear-gradient(195deg, #1e88e5 0%, #1565c0 100%);
+  color: #ffffff;
+  font-weight: 700;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  border-radius: 8px;
+  padding: 10px 14px;
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 4px 14px 0 rgba(30, 136, 229, 0.38);
+  transition: all var(--transition-fast);
+  cursor: pointer;
+  border: none;
+  font-family: inherit;
+  box-sizing: border-box;
+}
+
+.md-btn-vault-home:hover {
+  background: linear-gradient(195deg, #1976d2 0%, #0d47a1 100%);
+  box-shadow: 0 6px 20px 0 rgba(21, 101, 192, 0.48);
+  transform: translateY(-1px);
+}
+
+.md-btn-vault-home:active {
+  transform: translateY(0);
+  box-shadow: 0 2px 8px 0 rgba(21, 101, 192, 0.3);
+}
+
+.md-btn-vault-home svg,
+.md-btn-vault-home .home-icon,
+.md-btn-vault-home .material-symbols-outlined {
+  width: 16px;
+  height: 16px;
+  font-size: 16px;
+  margin-right: 8px;
+  flex-shrink: 0;
+  color: #ffffff;
+}
+
+.md-btn-vault-home .w-4 {
+  width: 16px;
+}
+
+.md-btn-vault-home .h-4 {
+  height: 16px;
+}
+
+.md-btn-vault-home .mr-2 {
+  margin-right: 8px;
+}
+
 .md-btn-upgrade-pro {
   background: linear-gradient(195deg, #42424a 0%, #191919 100%);
   color: #ffffff;

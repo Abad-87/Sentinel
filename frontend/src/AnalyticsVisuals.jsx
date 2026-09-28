@@ -7,7 +7,7 @@ const AnalyticsVisuals = ({ transactions = [], activeDataset, onShowToast }) => 
   const handleRegenerateServerCharts = async () => {
     if (!transactions || transactions.length === 0) return;
     setRegeneratingCharts(true);
-    const apiBase = import.meta.env.VITE_API_BASE_URL || '';
+    const apiBase = (import.meta.env.VITE_API_BASE_URL || '').replace(/\/+$/, '');
     const url = apiBase ? `${apiBase}/analytics/regenerate-from-data` : '/analytics/regenerate-from-data';
 
     try {

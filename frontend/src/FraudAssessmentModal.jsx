@@ -97,7 +97,7 @@ const FraudAssessmentModal = ({ isOpen, onClose, onPredictionResult }) => {
       NewbalanceDest: parseFloat(formData.NewbalanceDest)
     };
 
-    const apiBase = import.meta.env.VITE_API_BASE_URL || '';
+    const apiBase = (import.meta.env.VITE_API_BASE_URL || '').replace(/\/+$/, '');
     const predictUrl = apiBase ? `${apiBase}/predict` : '/predict';
 
     try {

@@ -206,7 +206,7 @@ const BatchUploadModal = ({
     const formData = new FormData();
     formData.append("file", file);
 
-    const apiBase = import.meta.env.VITE_API_BASE_URL || '';
+    const apiBase = (import.meta.env.VITE_API_BASE_URL || '').replace(/\/+$/, '');
     const primaryUrl = apiBase ? `${apiBase}/analyze/upload` : '/analyze/upload';
 
     let processedData = null;

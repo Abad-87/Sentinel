@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   ArrowRightCircle,
@@ -21,6 +21,7 @@ import {
   Lock,
   Layers,
   Sparkles,
+  Loader2,
 } from 'lucide-react';
 import './VaultShield.css';
 
@@ -35,6 +36,7 @@ export interface VaultShieldHeroProps {
 const navLinks = [
   { label: 'Features', href: '#features' },
   { label: 'How It Works', href: '#how-it-works' },
+  { label: 'Demo', href: '#demo' },
   { label: 'About', href: '#about' },
   { label: 'Live Telemetry', tab: 'TRANSACTIONS' },
 ] as const;
@@ -69,9 +71,47 @@ export const VaultShieldHero: React.FC<VaultShieldHeroProps> = ({
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [activeNotice, setActiveNotice] = useState<string | null>(null);
 
+  // Demo form state & submission handlers
+  const [demoForm, setDemoForm] = useState({
+    email: '',
+    firstName: '',
+    lastName: '',
+    company: '',
+    volume: 'Less than 10,000',
+  });
+  const [demoLoading, setDemoLoading] = useState(false);
+  const [demoSubmitted, setDemoSubmitted] = useState(false);
+
+  useEffect(() => {
+    const handleLocationChange = () => {
+      const hash = window.location.hash;
+      if (hash && hash.startsWith('#')) {
+        const target = document.querySelector(hash);
+        if (target) {
+          target.scrollIntoView({ behavior: 'smooth' });
+        }
+      }
+    };
+
+    window.addEventListener('popstate', handleLocationChange);
+    window.addEventListener('hashchange', handleLocationChange);
+
+    if (window.location.hash) {
+      setTimeout(handleLocationChange, 150);
+    }
+
+    return () => {
+      window.removeEventListener('popstate', handleLocationChange);
+      window.removeEventListener('hashchange', handleLocationChange);
+    };
+  }, []);
+
   const handleNavClick = (link: { label: string; href?: string; tab?: string }) => {
     setMobileMenuOpen(false);
     if (link.href) {
+      if (window.location.hash !== link.href) {
+        window.history.pushState(null, '', link.href);
+      }
       const target = document.querySelector(link.href);
       if (target) {
         target.scrollIntoView({ behavior: 'smooth' });
@@ -109,13 +149,26 @@ export const VaultShieldHero: React.FC<VaultShieldHeroProps> = ({
 
   const handleGetDemo = () => {
     setMobileMenuOpen(false);
-    if (onOpenDemo) {
-      onOpenDemo();
-    } else if (onNavigateToTab) {
-      onNavigateToTab('DASHBOARD');
-    } else if (onEnterDashboard) {
-      onEnterDashboard();
+    if (window.location.hash !== '#demo') {
+      window.history.pushState(null, '', '#demo');
     }
+    const target = document.getElementById('demo') || document.querySelector('#demo');
+    if (target) {
+      target.scrollIntoView({ behavior: 'smooth' });
+    }
+  };
+
+  const handleDemoSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!demoForm.email.trim()) return;
+
+    setDemoLoading(true);
+    setTimeout(() => {
+      setDemoLoading(false);
+      setDemoSubmitted(true);
+      setActiveNotice('✨ Demo Walkthrough scheduled! Check your work email for calendar coordinates.');
+      setTimeout(() => setActiveNotice(null), 4500);
+    }, 700);
   };
 
   // Fade Up variant according to exact specification:
@@ -598,7 +651,225 @@ export const VaultShieldHero: React.FC<VaultShieldHeroProps> = ({
       </section>
 
       {/* ==========================================================================
-          SECTION 3: "ABOUT SENTINEL" SECTION (#about)
+          SECTION 3: REQUEST A DEMO SECTION (#demo)
+          Positioned directly between "How It Works" and "About Sentinel AI"
+          ========================================================================== */}
+      <section id="demo" className="sentinel-demo-bg">
+        <div className="sentinel-section-wrap">
+          <div className="sentinel-section-header">
+            <span className="sentinel-section-pill">
+              <Sparkles size={14} /> Request a Demo
+            </span>
+            <h2 className="sentinel-section-title">
+              Experience Sentinel Live on Your Volume
+            </h2>
+            <p className="sentinel-section-subtitle">
+              Schedule an interactive walkthrough with our fraud intelligence engineers to see Sentinel live against your volume profile.
+            </p>
+          </div>
+
+          <motion.div
+            className="sentinel-demo-card"
+            initial={{ opacity: 0, y: 24 }}
+            whileInView={{ opacity: 1, y: 0 }}
+            viewport={{ once: true }}
+            transition={{ duration: 0.5 }}
+          >
+            {/* Left Column: Value Proposition & Trust Signals (Premium Light Green) */}
+            <div className="sentinel-demo-info-col">
+              <div className="sentinel-demo-info-top">
+                <h3 className="sentinel-demo-headline">
+                  Ready to secure your business?
+                </h3>
+                <p className="sentinel-demo-subheadline">
+                  Schedule a personalized demo to see how Sentinel can drastically reduce fraud and increase approval rates for your specific use case.
+                </p>
+
+                <div className="sentinel-demo-bullets">
+                  <div className="sentinel-demo-bullet">
+                    <CheckCircle2 size={20} className="sentinel-demo-check-icon" />
+                    <span>Custom ROI analysis</span>
+                  </div>
+
+                  <div className="sentinel-demo-bullet">
+                    <CheckCircle2 size={20} className="sentinel-demo-check-icon" />
+                    <span>Live platform walkthrough</span>
+                  </div>
+
+                  <div className="sentinel-demo-bullet">
+                    <CheckCircle2 size={20} className="sentinel-demo-check-icon" />
+                    <span>Integration consultation</span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Trust Badges */}
+              <div className="sentinel-demo-trust-badges">
+                <div className="sentinel-demo-trust-badge">
+                  <ShieldCheck size={15} className="sentinel-demo-badge-icon" />
+                  <span>SOC-2 Type II</span>
+                </div>
+                <div className="sentinel-demo-trust-badge">
+                  <Lock size={15} className="sentinel-demo-badge-icon" />
+                  <span>PCI-DSS Level 1</span>
+                </div>
+                <div className="sentinel-demo-trust-badge">
+                  <Clock size={15} className="sentinel-demo-badge-icon" />
+                  <span>&lt;15ms SLA</span>
+                </div>
+              </div>
+            </div>
+
+            {/* Right Column: Demo Request Form (Completely White) */}
+            <div className="sentinel-demo-form-col">
+              {demoSubmitted ? (
+                <div className="sentinel-demo-success-box">
+                  <div className="sentinel-demo-success-icon-wrap">
+                    <CheckCircle2 size={46} color="#059669" />
+                  </div>
+                  <h4 className="sentinel-demo-success-title">Walkthrough Requested!</h4>
+                  <p className="sentinel-demo-success-desc">
+                    We've received your request for <strong>{demoForm.email}</strong>. Our fraud intelligence engineers will dispatch access credentials and session coordinates shortly.
+                  </p>
+                  <div className="sentinel-demo-success-details">
+                    <div className="sentinel-demo-success-item">
+                      <span className="sentinel-demo-success-label">Organization:</span>
+                      <span className="sentinel-demo-success-val">{demoForm.company || 'Enterprise Partner'}</span>
+                    </div>
+                    <div className="sentinel-demo-success-item">
+                      <span className="sentinel-demo-success-label">Volume Tier:</span>
+                      <span className="sentinel-demo-success-val">{demoForm.volume}</span>
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    className="sentinel-demo-reset-btn"
+                    onClick={() => {
+                      setDemoSubmitted(false);
+                      setDemoForm({
+                        email: '',
+                        firstName: '',
+                        lastName: '',
+                        company: '',
+                        volume: 'Less than 10,000',
+                      });
+                    }}
+                  >
+                    Submit Another Request
+                  </button>
+                </div>
+              ) : (
+                <form className="sentinel-demo-form" onSubmit={handleDemoSubmit}>
+                  {/* Work Email (Required) */}
+                  <div className="sentinel-demo-field">
+                    <label htmlFor="demo-email" className="sentinel-demo-label">
+                      Work Email
+                    </label>
+                    <input
+                      id="demo-email"
+                      type="email"
+                      required
+                      placeholder="you@company.com"
+                      className="sentinel-demo-input"
+                      value={demoForm.email}
+                      onChange={(e) => setDemoForm({ ...demoForm, email: e.target.value })}
+                    />
+                  </div>
+
+                  {/* First Name & Last Name (Grid row) */}
+                  <div className="sentinel-demo-row">
+                    <div className="sentinel-demo-field">
+                      <label htmlFor="demo-fname" className="sentinel-demo-label">
+                        First Name
+                      </label>
+                      <input
+                        id="demo-fname"
+                        type="text"
+                        placeholder=""
+                        className="sentinel-demo-input"
+                        value={demoForm.firstName}
+                        onChange={(e) => setDemoForm({ ...demoForm, firstName: e.target.value })}
+                      />
+                    </div>
+                    <div className="sentinel-demo-field">
+                      <label htmlFor="demo-lname" className="sentinel-demo-label">
+                        Last Name
+                      </label>
+                      <input
+                        id="demo-lname"
+                        type="text"
+                        placeholder=""
+                        className="sentinel-demo-input"
+                        value={demoForm.lastName}
+                        onChange={(e) => setDemoForm({ ...demoForm, lastName: e.target.value })}
+                      />
+                    </div>
+                  </div>
+
+                  {/* Company Website */}
+                  <div className="sentinel-demo-field">
+                    <label htmlFor="demo-company" className="sentinel-demo-label">
+                      Company Website
+                    </label>
+                    <input
+                      id="demo-company"
+                      type="text"
+                      placeholder="https://..."
+                      className="sentinel-demo-input"
+                      value={demoForm.company}
+                      onChange={(e) => setDemoForm({ ...demoForm, company: e.target.value })}
+                    />
+                  </div>
+
+                  {/* Monthly Transaction Volume Dropdown */}
+                  <div className="sentinel-demo-field">
+                    <label htmlFor="demo-volume" className="sentinel-demo-label">
+                      Monthly Transaction Volume
+                    </label>
+                    <select
+                      id="demo-volume"
+                      className="sentinel-demo-select"
+                      value={demoForm.volume}
+                      onChange={(e) => setDemoForm({ ...demoForm, volume: e.target.value })}
+                    >
+                      <option value="Less than 10,000">Less than 10,000</option>
+                      <option value="10,000 – 50,000">10,000 – 50,000</option>
+                      <option value="50,000 – 250,000">50,000 – 250,000</option>
+                      <option value="250,000 – 1,000,000">250,000 – 1,000,000</option>
+                      <option value="1,000,000+">1,000,000+</option>
+                    </select>
+                  </div>
+
+                  {/* Action Button: "Request Demo" */}
+                  <button
+                    type="submit"
+                    className="sentinel-demo-submit-btn"
+                    disabled={demoLoading}
+                  >
+                    {demoLoading ? (
+                      <>
+                        <Loader2 size={18} className="sentinel-spinner" />
+                        <span>Requesting Demo...</span>
+                      </>
+                    ) : (
+                      <span>Request Demo</span>
+                    )}
+                  </button>
+
+                  {/* Ephemeral Privacy Disclaimer */}
+                  <p className="sentinel-demo-disclaimer">
+                    <Lock size={12} className="inline mr-1 opacity-70" />
+                    Enterprise-grade confidentiality. Zero-storage ephemeral privacy.
+                  </p>
+                </form>
+              )}
+            </div>
+          </motion.div>
+        </div>
+      </section>
+
+      {/* ==========================================================================
+          SECTION 4: "ABOUT SENTINEL" SECTION (#about)
           ========================================================================== */}
       <section id="about" className="sentinel-about-bg">
         <div className="sentinel-section-wrap">
@@ -765,6 +1036,16 @@ export const VaultShieldHero: React.FC<VaultShieldHeroProps> = ({
                 }}
               >
                 How It Works
+              </a>
+              <a
+                href="#demo"
+                className="sentinel-footer-link"
+                onClick={(e) => {
+                  e.preventDefault();
+                  handleGetDemo();
+                }}
+              >
+                Demo
               </a>
               <a
                 href="#about"
