@@ -421,16 +421,23 @@ const FraudAssessmentModal = ({ isOpen, onClose, onPredictionResult }) => {
 
             <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px', marginTop: '6px' }}>
               <button type="button" className="btn-bulk-action" onClick={handleClear}>
-                Reset Form
+                Clear
               </button>
-              <button type="submit" className="btn-test-action" disabled={loading}>
+              <button
+                type="submit"
+                className="btn-test-action"
+                disabled={loading}
+                style={{
+                  backgroundColor: '#38bdf8',
+                  color: '#0f172a',
+                  fontWeight: '600',
+                  boxShadow: '0 2px 6px -1px rgba(56, 189, 248, 0.4), 0 1px 3px rgba(0, 0, 0, 0.08)'
+                }}
+              >
                 {loading ? (
                   <span>Evaluating Vector...</span>
                 ) : (
-                  <>
-                    <span className="material-symbols-outlined" style={{ fontSize: '16px' }}>bolt</span>
-                    <span>Execute Scoring Inference</span>
-                  </>
+                  <span>Analyze Transaction</span>
                 )}
               </button>
             </div>
