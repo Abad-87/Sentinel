@@ -1252,6 +1252,7 @@ function App() {
         isOpen={isModalOpen}
         onClose={() => setIsModalOpen(false)}
         onPredictionResult={handlePredictionResult}
+        transactions={transactions}
       />
 
       {/* Transaction Audit Inspector Modal */}
