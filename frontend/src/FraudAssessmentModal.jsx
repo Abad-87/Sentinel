@@ -288,18 +288,18 @@ const FraudAssessmentModal = ({ isOpen, onClose, onPredictionResult }) => {
           <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
             <div className="form-grid-2">
               <div className="form-field">
-                <label className="form-label">Payment Instrument (Type)</label>
+                <label className="form-label">Online Transaction Type</label>
                 <select
                   name="Type"
                   value={formData.Type}
                   onChange={handleChange}
                   className="form-select"
                 >
-                  <option value="TRANSFER">TRANSFER (High Velocity)</option>
-                  <option value="CASH_OUT">CASH_OUT (Withdrawal)</option>
-                  <option value="PAYMENT">PAYMENT (Merchant)</option>
-                  <option value="CASH_IN">CASH_IN (Deposit)</option>
-                  <option value="DEBIT">DEBIT (Direct)</option>
+                  <option value="TRANSFER">TRANSFER</option>
+                  <option value="CASH_OUT">CASH_OUT</option>
+                  <option value="PAYMENT">PAYMENT</option>
+                  <option value="CASH_IN">CASH_IN</option>
+                  <option value="DEBIT">DEBIT</option>
                 </select>
               </div>
 
@@ -320,7 +320,7 @@ const FraudAssessmentModal = ({ isOpen, onClose, onPredictionResult }) => {
 
             <div className="form-grid-2">
               <div className="form-field">
-                <label className="form-label">Transaction Amount ($)</label>
+                <label className="form-label">Amount (Amount of transaction)</label>
                 <input
                   type="number"
                   step="any"
@@ -335,7 +335,7 @@ const FraudAssessmentModal = ({ isOpen, onClose, onPredictionResult }) => {
               </div>
 
               <div className="form-field">
-                <label className="form-label">Origin Initial Balance ($)</label>
+                <label className="form-label">Origin Initial Balance (Balance before Transaction)</label>
                 <input
                   type="number"
                   step="any"
@@ -352,7 +352,7 @@ const FraudAssessmentModal = ({ isOpen, onClose, onPredictionResult }) => {
 
             <div className="form-grid-2">
               <div className="form-field">
-                <label className="form-label">Origin New Balance ($)</label>
+                <label className="form-label">Origin New Balance (Balance after transaction)</label>
                 <input
                   type="number"
                   step="any"
@@ -367,7 +367,7 @@ const FraudAssessmentModal = ({ isOpen, onClose, onPredictionResult }) => {
               </div>
 
               <div className="form-field">
-                <label className="form-label">Destination New Balance ($)</label>
+                <label className="form-label">Destination New Balance (The new balance of recipient after the transaction)</label>
                 <input
                   type="number"
                   step="any"
