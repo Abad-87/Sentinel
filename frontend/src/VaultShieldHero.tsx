@@ -22,14 +22,26 @@ import {
   Layers,
   Sparkles,
   Loader2,
+  UserPlus,
 } from 'lucide-react';
 import './VaultShield.css';
 
 export interface VaultShieldHeroProps {
   onEnterDashboard?: () => void;
   onNavigateToTab?: (tabName: string) => void;
-  onOpenSignIn?: () => void;
+  onOpenSignIn?: (role?: string) => void;
+  onOpenSignUp?: (role?: string) => void;
   onOpenDemo?: () => void;
+  currentUser?: {
+    id?: string;
+    email?: string;
+    name?: string;
+    picture?: string;
+    role?: string;
+    is_admin?: boolean | number;
+    is_super_admin?: boolean | number;
+  } | null;
+  onLogout?: () => void;
 }
 
 // Navigation links supporting both on-page smooth scroll anchors and direct console tabs
@@ -67,6 +79,9 @@ export const VaultShieldHero: React.FC<VaultShieldHeroProps> = ({
   onEnterDashboard,
   onNavigateToTab,
   onOpenSignIn,
+  onOpenSignUp,
+  currentUser,
+  onLogout,
 }) => {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [activeNotice, setActiveNotice] = useState<string | null>(null);
@@ -135,15 +150,17 @@ export const VaultShieldHero: React.FC<VaultShieldHeroProps> = ({
     }
   };
 
-  const handleSignIn = () => {
+  const handleSignUp = () => {
     setMobileMenuOpen(false);
-    if (onOpenSignIn) {
-      onOpenSignIn();
+    if (onOpenSignUp) {
+      onOpenSignUp('USER');
+    } else if (onOpenSignIn) {
+      onOpenSignIn('USER');
     } else if (onEnterDashboard) {
       onEnterDashboard();
     } else {
-      setActiveNotice('Authorizing Security Analyst Credentials...');
-      setTimeout(() => setActiveNotice(null), 3500);
+      setActiveNotice('Opening Sentinel Registration Portal...');
+      setTimeout(() => setActiveNotice(null), 3000);
     }
   };
 
@@ -182,7 +199,7 @@ export const VaultShieldHero: React.FC<VaultShieldHeroProps> = ({
       transition: {
         delay: i * 0.15,
         duration: 0.6,
-        ease: [0.22, 1, 0.36, 1],
+        ease: [0.22, 1, 0.36, 1] as const,
       },
     }),
   };
@@ -217,6 +234,22 @@ export const VaultShieldHero: React.FC<VaultShieldHeroProps> = ({
               </button>
             ))}
           </nav>
+
+          {/* Desktop Auth Controls — when signed in, the avatar, name, role tag,
+              logout pill, and Console shortcut are intentionally never shown here. */}
+          <div className="vaultshield-desktop-auth hidden md:flex items-center gap-2.5">
+            {!currentUser && (
+              <button
+                type="button"
+                onClick={handleSignUp}
+                className="vaultshield-btn-signup-cta"
+                title="Sign Up for Sentinel AI"
+              >
+                <UserPlus size={15} />
+                <span>Sign Up</span>
+              </button>
+            )}
+          </div>
 
           {/* Mobile: Hamburger toggle icon */}
           <button
@@ -291,20 +324,35 @@ export const VaultShieldHero: React.FC<VaultShieldHeroProps> = ({
               </div>
 
               <div className="vaultshield-sheet-footer-actions">
-                <button
-                  type="button"
-                  className="vaultshield-sheet-btn-free"
-                  onClick={handleLaunchConsole}
-                >
-                  Launch Defense Console
-                </button>
-                <button
-                  type="button"
-                  className="vaultshield-sheet-btn-signin"
-                  onClick={handleSignIn}
-                >
-                  Analyst Sign In
-                </button>
+                {currentUser ? (
+                  <>
+                    <button
+                      type="button"
+                      className="vaultshield-sheet-btn-free"
+                      onClick={handleLaunchConsole}
+                    >
+                      Launch Defense Console
+                    </button>
+                    <button
+                      type="button"
+                      className="vaultshield-sheet-btn-signin"
+                      onClick={onLogout}
+                    >
+                      Sign Out
+                    </button>
+                  </>
+                ) : (
+                  <>
+                    <button
+                      type="button"
+                      className="vaultshield-sheet-btn-free vaultshield-sheet-btn-signup"
+                      onClick={handleSignUp}
+                    >
+                      <UserPlus size={16} style={{ marginRight: '6px' }} />
+                      <span>Sign Up</span>
+                    </button>
+                  </>
+                )}
               </div>
             </motion.aside>
           </>

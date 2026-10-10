@@ -4,11 +4,12 @@ import io
 import json
 import pickle
 import time
+import uuid
 from datetime import datetime
 from typing import Literal, Annotated, List, Optional
 import numpy as np
 import pandas as pd
-from fastapi import FastAPI, HTTPException, UploadFile, File, Body
+from fastapi import FastAPI, HTTPException, UploadFile, File, Body, Depends, Request, Query
 from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
@@ -57,12 +58,28 @@ from Fraud_Analysis import (
 )
 
 # Relational SQL Database Layer
-try:
-    import database
-except ImportError:
-    from backend import database
+from backend import database
 
-database.init_db()
+# Authentication & Google OAuth 2.0 Module
+try:
+    from backend.secure_auth import (
+        auth_router,
+        get_current_user,
+        get_current_user_optional,
+        require_admin,
+        require_user
+    )
+except ImportError:
+    from backend.secure_auth import (
+        auth_router,
+        get_current_user,
+        get_current_user_optional,
+        require_admin,
+        require_user
+    )
+
+from backend.secure_auth import api_guard, check_ownership, origins, validate_configuration
+validate_configuration()
 
 # Resolve model and preprocessor file paths
 def find_file(filename: str) -> str:
@@ -92,6 +109,7 @@ ohe = preprocessor.named_transformers_['OHE']
 num_cols = ['step', 'amount', 'oldbalanceOrg', 'newbalanceOrig', 'newbalanceDest', 'orig_balance_error', 'hour']
 
 app = FastAPI(
+    dependencies=[Depends(api_guard)],
     title='Online Fraud Detection & Analytics API',
     version='1.2.0',
     redirect_slashes=False,
@@ -100,13 +118,35 @@ app = FastAPI(
     openapi_url='/openapi.json'
 )
 
+# Allowed CORS origins supporting secure credentials and local Vite/Next frontends
+CORS_ORIGINS = origins()
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=CORS_ORIGINS,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# Mount Authentication & Google OAuth 2.0 Router
+app.include_router(auth_router)
+
+
+@app.middleware("http")
+async def secure_responses(request: Request, call_next):
+    if request.url.path.startswith('/outputs'):
+        try:
+            user = get_current_user(request)
+            if user['role'] != 'ADMIN':
+                raise HTTPException(403, 'Administrator access required')
+        except HTTPException as exc:
+            return JSONResponse(status_code=exc.status_code, content={'detail': exc.detail})
+    response = await call_next(request)
+    response.headers['Cache-Control'] = 'no-store'
+    response.headers['X-Content-Type-Options'] = 'nosniff'
+    response.headers['Referrer-Policy'] = 'no-referrer'
+    return response
 
 # Ensure outputs directory exists and mount static route (safe for serverless read-only filesystems)
 try:
@@ -197,7 +237,6 @@ def health_check():
         "status": "healthy",
         "service": "Online Fraud Detection & Visual Analytics API",
         "version": "1.2.0",
-        "database": database.get_db_status(),
         "features": ["single_prediction", "batch_upload_csv_json", "visual_analytics", "dynamic_visual_regeneration", "sql_database"]
     }
 
@@ -218,35 +257,33 @@ def get_database_status():
 @app.post('/api/database/reset')
 def reset_database():
     """Re-seed SQL database back to clean initial demo dataset state."""
-    try:
-        database.init_db(force_recreate=True)
-        return {
-            "status": "success",
-            "message": "SQL database successfully reset to default seed records.",
-            "database": database.get_db_status()
-        }
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to reset database: {str(e)}")
+    raise HTTPException(403, "Destructive database reset is disabled. Existing data is preserved.")
 
 
 @app.get('/api/transactions')
 def list_transactions(
-    limit: Optional[int] = None,
-    offset: int = 0,
+    limit: int = Query(100, ge=1, le=1000),
+    offset: int = Query(0, ge=0),
     search: Optional[str] = None,
     risk: Optional[str] = None,
     status: Optional[str] = None,
-    type: Optional[str] = None
+    type: Optional[str] = None,
+    current_user: dict = Depends(get_current_user)
 ):
     """Retrieve database-persisted transactions with optional relational filtering."""
     try:
+        user_email = current_user.get("email") if current_user else None
+        user_role = current_user.get("role") if current_user else None
         txns = database.get_all_transactions(
             limit=limit,
             offset=offset,
             search=search,
             risk=risk,
             status=status,
-            txn_type=type
+            txn_type=type,
+            user_email=user_email,
+            user_role=user_role
+            ,user_id=current_user['id']
         )
         return txns
     except Exception as e:
@@ -254,8 +291,9 @@ def list_transactions(
 
 
 @app.get('/api/transactions/{txn_id}')
-def get_transaction(txn_id: str):
+def get_transaction(txn_id: str, current_user: dict = Depends(get_current_user)):
     """Retrieve full audit dossier for a single transaction from SQL database."""
+    check_ownership(txn_id, current_user)
     txn = database.get_transaction_by_id(txn_id)
     if not txn:
         raise HTTPException(status_code=404, detail=f"Transaction {txn_id} not found in database.")
@@ -263,7 +301,7 @@ def get_transaction(txn_id: str):
 
 
 @app.post('/api/transactions')
-def create_transaction(txn: dict = Body(...)):
+def create_transaction(txn: dict = Body(...), current_user: dict = Depends(get_current_user)):
     """
     Insert a transaction into the SQL database. If fraud prediction metrics
     are not already provided, runs the ML model and recommendation engine automatically.
@@ -320,17 +358,19 @@ def create_transaction(txn: dict = Body(...)):
             if "status" not in txn:
                 txn["status"] = "Blocked" if risk == "High Risk" else "Under Review" if risk == "Medium Risk" else "Approved"
 
-        created = database.insert_transaction(txn)
+        # Client identifiers must never overwrite existing records, even in a race.
+        created = database.insert_transaction(txn, owner_user_id=current_user['id'])
         return JSONResponse(status_code=201, content=created)
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to insert transaction into SQL database: {str(e)}")
 
 
 @app.patch('/api/transactions/{txn_id}/status')
-def update_transaction_status(txn_id: str, payload: dict = Body(...)):
+def update_transaction_status(txn_id: str, payload: dict = Body(...), current_user: dict = Depends(get_current_user)):
     """Update transaction status (Blocked / Approved / Under Review) and persist in SQL with audit log."""
     new_status = payload.get("status")
-    if not new_status:
+    check_ownership(txn_id, current_user)
+    if new_status not in {'Blocked', 'Approved', 'Under Review'}:
         raise HTTPException(status_code=400, detail="Missing required 'status' property in payload.")
     updated = database.update_transaction_status(txn_id, new_status)
     if not updated:
@@ -339,8 +379,9 @@ def update_transaction_status(txn_id: str, payload: dict = Body(...)):
 
 
 @app.delete('/api/transactions/{txn_id}')
-def delete_single_transaction(txn_id: str):
+def delete_single_transaction(txn_id: str, current_user: dict = Depends(get_current_user)):
     """Permanently delete a transaction and associated fraud analysis from SQL database."""
+    check_ownership(txn_id, current_user)
     success = database.delete_transaction(txn_id)
     if not success:
         raise HTTPException(status_code=404, detail=f"Transaction {txn_id} not found in database.")
@@ -518,7 +559,7 @@ def predict(data: UserInput):
 
 
 @app.post('/analyze/upload')
-async def analyze_batch_upload(file: UploadFile = File(...)):
+async def analyze_batch_upload(file: UploadFile = File(...), current_user: dict = Depends(get_current_user)):
     filename = file.filename.lower()
     if not (filename.endswith('.csv') or filename.endswith('.json')):
         raise HTTPException(status_code=400, detail="Only .csv and .json files are supported.")
@@ -648,7 +689,7 @@ async def analyze_batch_upload(file: UploadFile = File(...)):
 
         results = []
         for i in range(len(df)):
-            txn_id = str(df['id'].iloc[i]) if 'id' in df.columns and pd.notna(df['id'].iloc[i]) else f"TXN-UP-{i+1:04d}"
+            txn_id = f"TXN-UP-{uuid.uuid4().hex}"
             sender = str(df['sender'].iloc[i]) if 'sender' in df.columns and pd.notna(df['sender'].iloc[i]) else f"acc_{1000 + (i % 8999)}_client"
             recipient = str(df['recipient'].iloc[i]) if 'recipient' in df.columns and pd.notna(df['recipient'].iloc[i]) else (
                 "merch_online_gateway" if df['type'].iloc[i] == 'PAYMENT' else f"acc_{2000 + (i % 7999)}_dest"
@@ -675,15 +716,15 @@ async def analyze_batch_upload(file: UploadFile = File(...)):
         # Persist uploaded batch records into the SQL database
         for item in results:
             try:
-                database.insert_transaction(item)
+                database.insert_transaction(item, owner_user_id=current_user['id'])
             except Exception as sql_err:
                 print("Warning: failed to persist batch item to SQL:", sql_err)
 
         # Generate updated analytics charts via Fraud_Analysis module
         target_dirs = [OUTPUTS_DIR, FRONTEND_OUTPUTS_DIR]
         try:
-            charts_updated = generate_online_fraud_charts(df, output_dirs=target_dirs)
-            if 'merchant_category' in df.columns:
+            charts_updated = generate_online_fraud_charts(df, output_dirs=target_dirs) if current_user['role'] == 'ADMIN' else []
+            if current_user['role'] == 'ADMIN' and 'merchant_category' in df.columns:
                 charts_updated.extend(generate_credit_card_charts(df, output_dirs=target_dirs))
         except Exception as plot_err:
             print("Visual plotting warning:", plot_err)

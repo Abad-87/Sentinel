@@ -44,7 +44,9 @@ const DetectionRulesView = ({
   activeDataset,
   onUpdateAllTransactions,
   onNavigateToTab,
-  onShowToast
+  onShowToast,
+  isAdmin = false,
+  onOpenAdminAuth
 }) => {
   const [rules, setRules] = useState(defaultRules);
 
@@ -59,6 +61,14 @@ const DetectionRulesView = ({
   }, [transactions, rules]);
 
   const handleToggle = (id) => {
+    if (!isAdmin) {
+      if (onShowToast) {
+        onShowToast('Administrator clearance required to modify active detection rules.');
+      }
+      if (onOpenAdminAuth) onOpenAdminAuth();
+      return;
+    }
+
     setRules((prev) =>
       prev.map((r) => {
         if (r.id === id) {
@@ -74,12 +84,28 @@ const DetectionRulesView = ({
   };
 
   const handleWeightChange = (id, newWeight) => {
+    if (!isAdmin) {
+      if (onShowToast) {
+        onShowToast('Administrator clearance required to adjust rule weights.');
+      }
+      if (onOpenAdminAuth) onOpenAdminAuth();
+      return;
+    }
+
     setRules((prev) =>
       prev.map((r) => (r.id === id ? { ...r, weight: parseInt(newWeight, 10) } : r))
     );
   };
 
   const handleDeployAndReanalyze = () => {
+    if (!isAdmin) {
+      if (onShowToast) {
+        onShowToast('Action Blocked: Only authorized Sentinel Administrators can deploy rule configurations.');
+      }
+      if (onOpenAdminAuth) onOpenAdminAuth();
+      return;
+    }
+
     const updated = transactions.map((t) => {
       const activeMatches = rules.filter((r) => r.enabled && r.check(t));
       const triggeredFlags = activeMatches.map((r) => r.name);

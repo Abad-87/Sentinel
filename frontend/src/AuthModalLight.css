@@ -1,0 +1,29 @@
+/* Sentinel AI Light Sign-Up Redesign - Part 1 */
+.sn-auth-backdrop{position:fixed;inset:0;z-index:10000;display:flex;align-items:center;justify-content:center;padding:20px;overflow-y:auto;background:radial-gradient(1200px 600px at 50% -10%,#e6f6fb 0%,#f2fafd 45%,#eef4f7 100%);backdrop-filter:blur(6px)}
+.sn-auth-backdrop::before{content:"";position:fixed;width:520px;height:520px;left:-160px;bottom:-180px;background:radial-gradient(circle at center,rgba(0,180,216,.14) 0%,rgba(0,180,216,0) 70%);border-radius:50%;pointer-events:none}
+.sn-auth-backdrop::after{content:"";position:fixed;width:520px;height:520px;right:-160px;top:-180px;background:radial-gradient(circle at center,rgba(0,180,216,.12) 0%,rgba(0,180,216,0) 70%);border-radius:50%;pointer-events:none}
+.sn-auth-card{position:relative;z-index:1;width:100%;max-width:430px;background:#fff;border-radius:18px;border:1px solid #dceff5;box-shadow:0 20px 60px rgba(15,43,61,.12),0 2px 10px rgba(15,43,61,.06);padding:28px 28px 20px;font-family:'Inter',system-ui,-apple-system,'Segoe UI',Roboto,sans-serif;color:#0f2b3d;animation:sn-pop .22s ease-out}
+.sn-auth-card.sn-wide{max-width:680px;padding:30px 30px 18px}
+@keyframes sn-pop{from{transform:translateY(10px) scale(.99);opacity:0}to{transform:translateY(0) scale(1);opacity:1}}
+.sn-close{position:absolute;top:12px;right:12px;width:30px;height:30px;border-radius:50%;border:1px solid #e6eef3;background:#f7fafc;color:#6b7d8f;font-size:16px;line-height:1;cursor:pointer;display:flex;align-items:center;justify-content:center}
+.sn-close:hover{background:#eef4f7;color:#0f2b3d}
+.sn-brand{text-align:center;margin-bottom:10px}
+.sn-brand-row{display:flex;align-items:center;justify-content:center;gap:8px}
+.sn-brand-logo{width:30px;height:30px;object-fit:contain}
+.sn-brand-name{font-size:17px;font-weight:800;letter-spacing:.06em;color:#0f2b3d}
+.sn-brand-name span{color:#00b4d8;font-weight:800}
+.sn-brand-tag{font-size:11px;color:#8a9aa8;margin-top:2px}
+.sn-medallion{width:62px;height:62px;margin:12px auto 10px;border-radius:50%;background:#e8f7fc;border:1px solid #d3edf5;display:flex;align-items:center;justify-content:center;color:#00a9ce;position:relative}
+.sn-medallion::before,.sn-medallion::after{content:"";position:absolute;width:22px;height:2px;background:#bfe9f3;border-radius:2px;top:50%}
+.sn-medallion::before{left:-28px;box-shadow:0 6px 0 #d8f1f8}
+.sn-medallion::after{right:-28px;box-shadow:0 6px 0 #d8f1f8}
+.sn-title{text-align:center;font-size:26px;font-weight:800;letter-spacing:-.02em;color:#0f2b3d;margin:4px 0}
+.sn-title .sn-cyan{color:#00b4d8}
+.sn-sub{text-align:center;font-size:13.5px;line-height:1.5;color:#6b7d8f;max-width:420px;margin:0 auto 18px}
+.sn-role-grid{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin:6px 0 14px}
+@media(max-width:620px){.sn-auth-card.sn-wide{max-width:430px}.sn-role-grid{grid-template-columns:1fr}}
+.sn-role-card{border:1.5px solid #d9ecf3;border-radius:14px;background:#fbfeff;padding:20px 18px 16px;text-align:center;transition:all .16s ease}
+.sn-role-card:hover{border-color:#00b4d8;box-shadow:0 10px 28px rgba(0,180,216,.14);transform:translateY(-2px)}
+.sn-role-icon{width:54px;height:54px;margin:0 auto 10px;border-radius:50%;background:#e8f7fc;border:1px solid #cdeaf4;display:flex;align-items:center;justify-content:center;color:#00a9ce}
+.sn-role-name{font-size:17px;font-weight:800;color:#0f2b3d;margin:0 0 6px}
+.sn-role-desc{font-size:12.5px;line-height:1.55;color:#6b7d8f;min-height:58px;margin:0 0 14px}

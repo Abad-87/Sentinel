@@ -10,6 +10,7 @@ import TransactionInspectorModal from './TransactionInspectorModal';
 import { initialTransactions } from './mockTransactions';
 import sentinelLogo from './assets/logo.png';
 import VaultShieldHero from './VaultShieldHero';
+import AuthModal from './AuthModal';
 import './App.css';
 
 // Resolve tab name from location hash reliably
@@ -94,6 +95,11 @@ function App() {
   const [notification, setNotification] = useState(null);
   const [selectedTxnIds, setSelectedTxnIds] = useState(new Set());
 
+  // Authentication & Role-Based Session State
+  const [currentUser, setCurrentUser] = useState(null);
+  const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
+  const [authModalRole, setAuthModalRole] = useState('USER');
+
   // API URL resolver helper
   const getApiUrl = (endpoint) => {
     const apiBase = (import.meta.env.VITE_API_BASE_URL || '').replace(/\/+$/, '');
@@ -118,6 +124,56 @@ function App() {
       console.warn('Failed to persist dataset info to localStorage', e);
     }
   }, [activeDataset]);
+
+  // Verify and fetch active session profile from HTTP-only cookie
+  const checkSession = async () => {
+    try {
+      let res;
+      try {
+        res = await fetch(getApiUrl('/api/auth/me'), { credentials: 'include' });
+      } catch {
+        res = await fetch('http://127.0.0.1:8000/api/auth/me', { credentials: 'include' });
+      }
+      if (res && res.ok) {
+        const data = await res.json();
+        if (data.authenticated && data.user) {
+          setCurrentUser(data.user);
+          return data.user;
+        }
+      }
+    } catch (e) {
+      // Unauthenticated state is expected for anonymous visitors
+    }
+    return null;
+  };
+
+  // Handle user logout and clear session cookies
+  const handleLogout = async () => {
+    try {
+      try {
+        await fetch(getApiUrl('/api/auth/logout'), { method: 'POST', credentials: 'include' });
+      } catch {
+        await fetch('http://127.0.0.1:8000/api/auth/logout', { method: 'POST', credentials: 'include' });
+      }
+    } catch (e) {
+      console.warn('Logout API error:', e);
+    }
+    setCurrentUser(null);
+    showNotification('You have been securely signed out of Sentinel AI.');
+  };
+
+  // Handle login completion from AuthModal
+  const handleLoginSuccess = (user, redirectTab) => {
+    setCurrentUser(user);
+    showNotification(`Welcome, ${user.name}! Authenticated with ${user.role} role.`);
+    if (redirectTab) {
+      navigateToTab(redirectTab);
+    } else if (user.role === 'ADMIN' || user.is_admin) {
+      navigateToTab('RULES');
+    } else {
+      navigateToTab('DASHBOARD');
+    }
+  };
 
   // Fetch transactions from the SQL Database on startup
   const fetchDbTransactions = async () => {
@@ -162,6 +218,52 @@ function App() {
   useEffect(() => {
     checkBackendHealth();
     fetchDbTransactions();
+    checkSession();
+
+    // Check for Google OAuth callback parameters in URL (search or hash)
+    const checkOAuthRedirectParams = () => {
+      const fullUrl = window.location.href;
+      const hashStr = window.location.hash || '';
+
+      const parseParam = (key) => {
+        try {
+          const urlObj = new URL(fullUrl, window.location.origin);
+          let val = urlObj.searchParams.get(key);
+          if (!val && hashStr.includes('?')) {
+            const hashParams = new URLSearchParams(hashStr.split('?')[1]);
+            val = hashParams.get(key);
+          }
+          return val;
+        } catch {
+          return null;
+        }
+      };
+
+      const authStatus = parseParam('auth');
+      const authRole = parseParam('role');
+      const authName = parseParam('name');
+      const authError = parseParam('auth_error');
+
+      if (authStatus === 'success') {
+        const decodedName = authName ? decodeURIComponent(authName) : 'Analyst';
+        showNotification(`Welcome back, ${decodedName}! Authenticated as ${authRole || 'USER'}.`);
+        checkSession();
+        if (authRole === 'ADMIN') {
+          navigateToTab('RULES');
+        } else {
+          navigateToTab('DASHBOARD');
+        }
+        // Clean up URL query parameters without reloading
+        const cleanUrl = window.location.pathname + (window.location.hash ? window.location.hash.split('?')[0] : '');
+        window.history.replaceState(null, '', cleanUrl);
+      } else if (authError) {
+        showNotification(`Authentication Alert: ${decodeURIComponent(authError)}`);
+        const cleanUrl = window.location.pathname + (window.location.hash ? window.location.hash.split('?')[0] : '');
+        window.history.replaceState(null, '', cleanUrl);
+      }
+    };
+
+    checkOAuthRedirectParams();
 
     const handleLocationChange = () => {
       const targetTab = parseHashToTab(window.location.hash);
@@ -617,9 +719,16 @@ function App() {
           onNavigateToTab={(tab) => {
             navigateToTab(tab);
           }}
-          onOpenSignIn={() => {
-            navigateToTab('DASHBOARD');
+          onOpenSignUp={(role = 'USER') => {
+            setAuthModalRole(role);
+            setIsAuthModalOpen(true);
           }}
+          onOpenSignIn={(role = 'USER') => {
+            setAuthModalRole(role);
+            setIsAuthModalOpen(true);
+          }}
+          currentUser={currentUser}
+          onLogout={handleLogout}
         />
         {isModalOpen && (
           <FraudAssessmentModal
@@ -627,6 +736,13 @@ function App() {
             onScored={handlePredictionResult}
           />
         )}
+        <AuthModal
+          isOpen={isAuthModalOpen}
+          onClose={() => setIsAuthModalOpen(false)}
+          initialRole={authModalRole}
+          onLoginSuccess={handleLoginSuccess}
+          apiUrl={getApiUrl('')}
+        />
       </>
     );
   }
@@ -808,7 +924,7 @@ function App() {
           </div>
 
           {/* Active Dataset Status Pill */}
-          <div className="active-dataset-header-pill" title={`Active Dataset: ${activeDataset.name} (Updated: ${activeDataset.updatedAt}) • Click Reset to restore demo seed`}>
+          <div className="active-dataset-header-pill sql-db-header-badge" title={`Active Dataset: ${activeDataset.name} (Updated: ${activeDataset.updatedAt}) • Click Reset to restore demo seed`}>
             <span className="dataset-dot"></span>
             <span className="dataset-label">Dataset:</span>
             <span className="dataset-name">{activeDataset.name}</span>
@@ -821,6 +937,65 @@ function App() {
                 title="Reset to default initial demo dataset"
               >
                 Reset
+              </button>
+            )}
+          </div>
+
+          {/* Authentication & User Session Controls */}
+          <div className="header-auth-controls">
+            {currentUser ? (
+              (() => {
+                // Role is evaluated strictly from the active session payload —
+                // no hardcoded identity or default master-admin privileges.
+                const isAdminUser = Boolean(
+                  currentUser.role === 'ADMIN' ||
+                  currentUser.role === 'SUPER_ADMIN' ||
+                  currentUser.is_admin
+                );
+
+                return (
+                  <>
+                    <div
+                      className="header-user-badge"
+                      title={`Signed in as ${currentUser.name} (${currentUser.email})`}
+                    >
+                      {currentUser.picture ? (
+                        <img src={currentUser.picture} alt={currentUser.name} className="header-user-avatar" />
+                      ) : (
+                        <div className="header-user-avatar-placeholder">
+                          {currentUser.name ? currentUser.name.charAt(0).toUpperCase() : 'U'}
+                        </div>
+                      )}
+                      <div className="header-user-meta">
+                        <span className="header-user-name">{currentUser.name}</span>
+                        <span
+                          className={`header-role-tag ${isAdminUser ? 'role-tag-admin' : 'role-tag-user'}`}
+                        >
+                          {isAdminUser ? 'Admin' : 'Analyst'}
+                        </span>
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      className="btn-header-logout"
+                      onClick={handleLogout}
+                      title="Sign out of Sentinel session"
+                    >
+                      <span className="material-symbols-outlined" style={{ fontSize: '15px' }}>logout</span>
+                      <span>Sign Out</span>
+                    </button>
+                  </>
+                );
+              })()
+            ) : (
+              <button
+                type="button"
+                className="btn-header-signup-cta"
+                onClick={() => { setAuthModalRole('USER'); setIsAuthModalOpen(true); }}
+                title="Create your Sentinel AI Account"
+              >
+                <span className="material-symbols-outlined" style={{ fontSize: '16px' }}>person_add</span>
+                <span>Sign Up</span>
               </button>
             )}
           </div>
@@ -1213,15 +1388,58 @@ function App() {
           />
         )}
 
-        {/* TAB 4: DETECTION RULES */}
+        {/* TAB 4: DETECTION RULES / ADMIN CONTROL PANEL */}
         {currentTab === 'RULES' && (
-          <DetectionRulesView
-            transactions={transactions}
-            activeDataset={activeDataset}
-            onUpdateAllTransactions={handleUpdateAllTransactions}
-            onNavigateToTab={navigateToTab}
-            onShowToast={showNotification}
-          />
+          <div className="rules-view-container">
+            {(() => {
+              // Admin access is evaluated dynamically from the active session;
+              // no visitor receives default master-admin elevation.
+              const isAdminAuthorized = Boolean(
+                currentUser &&
+                (currentUser.role === 'ADMIN' ||
+                  currentUser.role === 'SUPER_ADMIN' ||
+                  currentUser.is_admin)
+              );
+
+              return (
+                <>
+                  {!isAdminAuthorized && (
+                    <div className="admin-restricted-notice">
+                      <div className="admin-notice-content">
+                        <span className="material-symbols-outlined" style={{ color: '#ef4444', fontSize: '22px' }}>gss_loss_prevention</span>
+                        <div>
+                          <strong style={{ color: '#ffffff', display: 'block', fontSize: '0.9rem' }}>
+                            Admin Authorization Required
+                          </strong>
+                          <span>
+                            Modifying heuristic detection rules, model weights, and quarantine triggers is restricted to verified Sentinel Administrators (@sentinel.ai).
+                          </span>
+                        </div>
+                      </div>
+                      <button
+                        type="button"
+                        className="btn-admin-escalate"
+                        onClick={() => { setAuthModalRole('ADMIN'); setIsAuthModalOpen(true); }}
+                      >
+                        <span className="material-symbols-outlined" style={{ fontSize: '15px' }}>key</span>
+                        <span>Sign in as Admin</span>
+                      </button>
+                    </div>
+                  )}
+
+                  <DetectionRulesView
+                    transactions={transactions}
+                    activeDataset={activeDataset}
+                    onUpdateAllTransactions={handleUpdateAllTransactions}
+                    onNavigateToTab={navigateToTab}
+                    onShowToast={showNotification}
+                    isAdmin={isAdminAuthorized}
+                    onOpenAdminAuth={() => { setAuthModalRole('ADMIN'); setIsAuthModalOpen(true); }}
+                  />
+                </>
+              );
+            })()}
+          </div>
         )}
 
         {/* TAB 5: VISUAL ANALYTICS */}
@@ -1261,6 +1479,15 @@ function App() {
         onClose={() => setSelectedTxn(null)}
         onUpdateStatus={handleUpdateStatus}
         onDeleteTxn={handleDeleteSingleTxn}
+      />
+
+      {/* Google OAuth 2.0 & Role Authorization Modal */}
+      <AuthModal
+        isOpen={isAuthModalOpen}
+        onClose={() => setIsAuthModalOpen(false)}
+        initialRole={authModalRole}
+        onLoginSuccess={handleLoginSuccess}
+        apiUrl={getApiUrl('')}
       />
 
       {/* Responsive Mobile Bottom Navigation Bar */}

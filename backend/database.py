@@ -12,12 +12,16 @@ if IS_VERCEL:
 else:
     DB_PATH = os.path.join(BASE_DIR, "sentinel.db")
 
+# An explicit persistent path overrides the legacy serverless /tmp location.
+DB_PATH = os.environ.get("SENTINEL_DB_PATH", DB_PATH)
+
 
 def get_db_connection() -> sqlite3.Connection:
     """Establish and return a SQLite database connection with row factory and foreign keys enabled."""
-    conn = sqlite3.connect(DB_PATH)
+    conn = sqlite3.connect(DB_PATH, timeout=15)
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA foreign_keys = ON;")
+    conn.execute("PRAGMA busy_timeout = 15000;")
     conn.execute("PRAGMA journal_mode = WAL;")
     return conn
 
@@ -37,6 +41,8 @@ def init_db(force_recreate: bool = False):
             cursor.execute("DROP TABLE IF EXISTS transactions;")
             cursor.execute("DROP TABLE IF EXISTS counterparties;")
             cursor.execute("DROP TABLE IF EXISTS customers;")
+            cursor.execute("DROP TABLE IF EXISTS admin_whitelist;")
+            cursor.execute("DROP TABLE IF EXISTS users;")
 
         # 1. Customers / Users Table
         cursor.execute("""
@@ -115,6 +121,46 @@ def init_db(force_recreate: bool = False):
             );
         """)
 
+        # 6. Authenticated Users (Google OAuth, Direct Sign-Up & Super Admin Management)
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS users (
+                id TEXT PRIMARY KEY,
+                email TEXT UNIQUE NOT NULL,
+                name TEXT NOT NULL,
+                password_hash TEXT,
+                picture TEXT,
+                role TEXT NOT NULL DEFAULT 'USER',
+                is_admin INTEGER NOT NULL DEFAULT 0,
+                is_super_admin INTEGER NOT NULL DEFAULT 0,
+                google_id TEXT UNIQUE,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                last_login TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            );
+        """)
+
+        # Migration helper for existing databases
+        try:
+            cursor.execute("PRAGMA table_info(users);")
+            existing_cols = [c["name"] for c in cursor.fetchall()]
+            if "password_hash" not in existing_cols:
+                cursor.execute("ALTER TABLE users ADD COLUMN password_hash TEXT;")
+            if "is_super_admin" not in existing_cols:
+                cursor.execute("ALTER TABLE users ADD COLUMN is_super_admin INTEGER NOT NULL DEFAULT 0;")
+        except Exception:
+            pass
+
+        # 7. Admin Authorization Whitelist (Domains and specific email addresses)
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS admin_whitelist (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                email_or_domain TEXT UNIQUE NOT NULL,
+                type TEXT NOT NULL DEFAULT 'EMAIL',
+                notes TEXT,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            );
+        """)
+
         # Relational Indexes for High-Speed Filtering and Queries
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_transactions_sender ON transactions(sender_id);")
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_transactions_recipient ON transactions(recipient_id);")
@@ -125,6 +171,10 @@ def init_db(force_recreate: bool = False):
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_fraud_prob ON fraud_analyses(fraud_probability);")
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_customer_acc ON customers(account_number);")
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_audit_txn ON audit_logs(transaction_id);")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_users_email ON users(email);")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_users_role ON users(role);")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_users_google ON users(google_id);")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_admin_whitelist_target ON admin_whitelist(email_or_domain);")
 
         conn.commit()
 
@@ -132,6 +182,14 @@ def init_db(force_recreate: bool = False):
         cursor.execute("SELECT COUNT(*) AS cnt FROM transactions;")
         if cursor.fetchone()["cnt"] == 0:
             seed_initial_data(conn)
+
+        cursor.execute("SELECT COUNT(*) AS cnt FROM admin_whitelist;")
+        if cursor.fetchone()["cnt"] == 0:
+            seed_admin_whitelist(conn)
+
+        cursor.execute("SELECT COUNT(*) AS cnt FROM users;")
+        if cursor.fetchone()["cnt"] == 0:
+            seed_initial_users(conn)
 
 
 def seed_initial_data(conn: sqlite3.Connection):
@@ -383,9 +441,17 @@ def get_all_transactions(
     search: Optional[str] = None,
     risk: Optional[str] = None,
     status: Optional[str] = None,
-    txn_type: Optional[str] = None
+    txn_type: Optional[str] = None,
+    user_email: Optional[str] = None,
+    user_role: Optional[str] = None,
+    user_id: Optional[str] = None
 ) -> List[Dict[str, Any]]:
-    """Query transactions joined with fraud analysis from SQL database with optional filters."""
+    """
+    Query transactions joined with fraud analysis from SQL database.
+    - Super Admin (abadmustafa280@gmail.com): Full global access across all transactions and users.
+    - Standard Admin: Full organizational telemetry access.
+    - Standard User: Scoped strictly to user personal activity logs.
+    """
     query = """
         SELECT
             t.id,
@@ -408,6 +474,11 @@ def get_all_transactions(
         WHERE 1=1
     """
     params = []
+
+    # Scoping for Standard Users exclusively to their personal transactions/simulator
+    if user_role == "USER":
+        query += " AND t.owner_user_id = ?"
+        params.append(user_id)
 
     if search:
         s = f"%{search.strip().lower()}%"
@@ -522,7 +593,7 @@ def get_transaction_by_id(txn_id: str) -> Optional[Dict[str, Any]]:
     }
 
 
-def insert_transaction(txn: Dict[str, Any]) -> Dict[str, Any]:
+def insert_transaction(txn: Dict[str, Any], owner_user_id: Optional[str] = None) -> Dict[str, Any]:
     """Insert a transaction, its customer/counterparty records, and its fraud analysis into SQL."""
     with get_db_connection() as conn:
         cursor = conn.cursor()
@@ -545,10 +616,10 @@ def insert_transaction(txn: Dict[str, Any]) -> Dict[str, Any]:
         timestamp_label = txn.get("timestamp") or "Just now"
 
         cursor.execute("""
-            INSERT OR REPLACE INTO transactions (
+            INSERT INTO transactions (
                 id, step, type, amount, oldbalanceOrg, newbalanceOrig, newbalanceDest,
-                sender_id, recipient_id, status, timestamp_label
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+                sender_id, recipient_id, status, timestamp_label, owner_user_id
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
         """, (
             txn_id,
             int(txn.get("step", 1)),
@@ -560,7 +631,8 @@ def insert_transaction(txn: Dict[str, Any]) -> Dict[str, Any]:
             sender_id,
             recipient_id,
             txn.get("status", "Approved"),
-            timestamp_label
+            timestamp_label,
+            owner_user_id
         ))
 
         flags_json = json.dumps(txn.get("anomalyFlags", []))
@@ -686,6 +758,12 @@ def get_db_status() -> Dict[str, Any]:
         cursor.execute("SELECT COUNT(*) AS cnt FROM audit_logs;")
         audit_count = cursor.fetchone()["cnt"]
 
+        cursor.execute("SELECT COUNT(*) AS cnt FROM users;")
+        user_count = cursor.fetchone()["cnt"]
+
+        cursor.execute("SELECT COUNT(*) AS cnt FROM admin_whitelist;")
+        whitelist_count = cursor.fetchone()["cnt"]
+
     file_size_bytes = os.path.getsize(DB_PATH) if os.path.exists(DB_PATH) else 0
 
     return {
@@ -697,6 +775,367 @@ def get_db_status() -> Dict[str, Any]:
             "transactions": txn_count,
             "customers": cust_count,
             "fraud_analyses": fraud_count,
-            "audit_logs": audit_count
+            "audit_logs": audit_count,
+            "users": user_count,
+            "admin_whitelist": whitelist_count
         }
     }
+
+
+# ============================================================================
+# USER & ADMIN AUTHENTICATION DATABASE LAYER
+# ============================================================================
+
+SUPER_ADMIN_EMAIL = "abadmustafa280@gmail.com"
+
+
+def is_super_admin_email(email: str) -> bool:
+    """Check if given email corresponds to the Master Super Admin account."""
+    if not email:
+        return False
+    return email.strip().lower() == SUPER_ADMIN_EMAIL.lower()
+
+
+def hash_password(password: str) -> str:
+    """Generate salted PBKDF2-HMAC-SHA256 password hash."""
+    import secrets
+    import hashlib
+    salt = secrets.token_hex(16)
+    hashed = hashlib.pbkdf2_hmac("sha256", password.encode("utf-8"), salt.encode("utf-8"), 100000).hex()
+    return f"{salt}:{hashed}"
+
+
+def verify_password(password: str, stored_hash: str) -> bool:
+    """Verify raw password against stored salted PBKDF2 hash."""
+    import hashlib
+    import hmac
+    if not stored_hash or ":" not in stored_hash:
+        return False
+    salt, expected = stored_hash.split(":", 1)
+    computed = hashlib.pbkdf2_hmac("sha256", password.encode("utf-8"), salt.encode("utf-8"), 100000).hex()
+    return hmac.compare_digest(computed, expected)
+
+
+def seed_admin_whitelist(conn: sqlite3.Connection):
+    """Seed default enterprise domains and security operational emails into whitelist."""
+    cursor = conn.cursor()
+    seed_entries = [
+        (SUPER_ADMIN_EMAIL, "EMAIL", "Master Super Administrator - Global Authority"),
+        ("sentinel.ai", "DOMAIN", "Enterprise Sentinel AI Domain"),
+        ("admin@sentinel.ai", "EMAIL", "Primary Security Operations Lead"),
+        ("secops@sentinel.ai", "EMAIL", "Security Operations Team"),
+        ("compliance@sentinel.ai", "EMAIL", "Chief Compliance Officer"),
+        ("root@sentinel.ai", "EMAIL", "System Superuser"),
+        ("admin@example.com", "EMAIL", "Demo Admin Account for Testing")
+    ]
+    for target, entry_type, notes in seed_entries:
+        cursor.execute("""
+            INSERT OR IGNORE INTO admin_whitelist (email_or_domain, type, notes)
+            VALUES (?, ?, ?);
+        """, (target.strip().lower(), entry_type.upper(), notes))
+    conn.commit()
+
+
+def seed_initial_users(conn: sqlite3.Connection):
+    """Seed initial demonstration users for Super Admin, Admin, and Standard Analyst roles."""
+    cursor = conn.cursor()
+    now = datetime.utcnow().isoformat()
+    seed_users = [
+        (
+            "usr_master_superadmin_000",
+            SUPER_ADMIN_EMAIL,
+            "Sentinel Administrator",
+            "",
+            "SUPER_ADMIN",
+            1,
+            1,
+            "master_google_abad_001",
+            now, now, now
+        ),
+        (
+            "usr_demo_admin_001",
+            "secops@sentinel.ai",
+            "Elena Vance (SecOps Lead)",
+            "",
+            "ADMIN",
+            1,
+            0,
+            "demo_google_secops_9921",
+            now, now, now
+        ),
+        (
+            "usr_demo_user_002",
+            "analyst.vance@defense.org",
+            "Marcus Brody (Risk Analyst)",
+            "",
+            "USER",
+            0,
+            0,
+            "demo_google_analyst_1048",
+            now, now, now
+        )
+    ]
+    for u in seed_users:
+        cursor.execute("""
+            INSERT OR IGNORE INTO users (id, email, name, picture, role, is_admin, is_super_admin, google_id, created_at, updated_at, last_login)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+        """, u)
+    conn.commit()
+
+
+def get_user_by_id(user_id: str) -> Optional[Dict[str, Any]]:
+    """Retrieve an authenticated user record by unique primary key ID."""
+    with get_db_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute("SELECT * FROM users WHERE id = ?;", (user_id,))
+        row = cursor.fetchone()
+        return dict(row) if row else None
+
+
+def get_user_by_email(email: str) -> Optional[Dict[str, Any]]:
+    """Retrieve an authenticated user record by normalized email address."""
+    if not email:
+        return None
+    with get_db_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute("SELECT * FROM users WHERE LOWER(email) = ?;", (email.strip().lower(),))
+        row = cursor.fetchone()
+        return dict(row) if row else None
+
+
+def is_email_authorized_admin(email: str) -> bool:
+    """
+    Check if an email qualifies for the ADMIN or SUPER_ADMIN role:
+    1. Master Super Admin check (abadmustafa280@gmail.com) -> Always True
+    2. Configured environment domains / email lists (e.g. sentinel.ai)
+    3. SQL admin_whitelist domain entries
+    4. SQL admin_whitelist specific email entries
+    5. Database 'is_admin' or 'is_super_admin' flag on existing user record
+    """
+    if not email:
+        return False
+    norm_email = email.strip().lower()
+
+    # 1. Master Super Admin Account
+    if is_super_admin_email(norm_email):
+        return True
+
+    domain = norm_email.split('@')[-1] if '@' in norm_email else ''
+
+    # 2. Environment variable checks
+    env_domains = [d.strip().lower() for d in os.environ.get("ADMIN_DOMAINS", "sentinel.ai").split(",") if d.strip()]
+    if domain in env_domains:
+        return True
+
+    env_emails = [e.strip().lower() for e in os.environ.get("ADMIN_EMAILS", "admin@sentinel.ai,secops@sentinel.ai").split(",") if e.strip()]
+    if norm_email in env_emails:
+        return True
+
+    # 3. Database whitelist table check
+    with get_db_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute("SELECT 1 FROM admin_whitelist WHERE type = 'EMAIL' AND LOWER(email_or_domain) = ?;", (norm_email,))
+        if cursor.fetchone():
+            return True
+
+        cursor.execute("""
+            SELECT 1 FROM admin_whitelist
+            WHERE type = 'DOMAIN' AND (LOWER(email_or_domain) = ? OR LOWER(email_or_domain) = ?);
+        """, (domain, f"@{domain}"))
+        if cursor.fetchone():
+            return True
+
+        cursor.execute("SELECT is_admin, is_super_admin FROM users WHERE LOWER(email) = ?;", (norm_email,))
+        row = cursor.fetchone()
+        if row and (bool(row["is_admin"]) or bool(row["is_super_admin"])):
+            return True
+
+    return False
+
+
+def create_user_with_password(
+    name: str,
+    email: str,
+    password: str,
+    role: str = "USER"
+) -> Dict[str, Any]:
+    """Create a new user with secure password hash and proper role scoping."""
+    norm_email = email.strip().lower()
+    user_id = f"usr_{abs(hash(norm_email)) % 100000000:08d}"
+    now = datetime.utcnow().isoformat()
+    pwd_hash = hash_password(password)
+
+    is_super = 1 if is_super_admin_email(norm_email) else 0
+    if is_super:
+        final_role = "SUPER_ADMIN"
+        final_is_admin = 1
+    elif role.upper() == "ADMIN":
+        final_role = "ADMIN"
+        final_is_admin = 1
+    else:
+        final_role = "USER"
+        final_is_admin = 0
+
+    # Defense-in-depth: Administrator accounts may only ever be created for
+    # server-side authorized identities (whitelist, enterprise domain, or the
+    # master super admin). The API layer enforces this too; this guard makes
+    # sure no future caller can bypass the authorization check.
+    if final_role == "ADMIN" and not is_email_authorized_admin(norm_email):
+        raise ValueError(
+            f"Work email '{norm_email}' is not authorized for Administrator access. "
+            "Admin registration requires a verified enterprise domain or whitelist clearance."
+        )
+
+    with get_db_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute("SELECT * FROM users WHERE LOWER(email) = ?;", (norm_email,))
+        existing = cursor.fetchone()
+
+        if existing:
+            user_id = existing["id"]
+            cursor.execute("""
+                UPDATE users
+                SET name = ?, password_hash = ?, role = ?, is_admin = ?, is_super_admin = ?, updated_at = ?, last_login = ?
+                WHERE id = ?;
+            """, (name or existing["name"], pwd_hash, final_role, final_is_admin, is_super, now, now, user_id))
+        else:
+            cursor.execute("""
+                INSERT INTO users (id, email, name, password_hash, picture, role, is_admin, is_super_admin, google_id, created_at, updated_at, last_login)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+            """, (user_id, norm_email, name, pwd_hash, "", final_role, final_is_admin, is_super, None, now, now, now))
+
+        cursor.execute("""
+            INSERT INTO audit_logs (transaction_id, action, notes)
+            VALUES (NULL, 'AUTH_SIGNUP', ?);
+        """, (f"User registered with password: {norm_email} (Role: {final_role}, SuperAdmin: {is_super})",))
+        conn.commit()
+
+        cursor.execute("SELECT * FROM users WHERE id = ?;", (user_id,))
+        return dict(cursor.fetchone())
+
+
+def authenticate_user_password(email: str, password: str) -> Optional[Dict[str, Any]]:
+    """Verify user password and update last_login on success."""
+    norm_email = email.strip().lower()
+    with get_db_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute("SELECT * FROM users WHERE LOWER(email) = ?;", (norm_email,))
+        row = cursor.fetchone()
+        if not row:
+            return None
+        user = dict(row)
+        if not user.get("password_hash"):
+            return None
+        if not verify_password(password, user["password_hash"]):
+            return None
+
+        now = datetime.utcnow().isoformat()
+        cursor.execute("UPDATE users SET last_login = ? WHERE id = ?;", (now, user["id"]))
+        conn.commit()
+        user["last_login"] = now
+        return user
+
+
+def upsert_user(
+    google_id: str,
+    email: str,
+    name: str,
+    picture: Optional[str] = None,
+    role: str = "USER",
+    is_admin: bool = False
+) -> Dict[str, Any]:
+    """
+    Create or update an authenticated user from Google OAuth callback data.
+    Enforces role assignment, Super Admin recognition, and audit trail persistence.
+    """
+    norm_email = email.strip().lower()
+    user_id = f"usr_{google_id}" if google_id else f"usr_{abs(hash(norm_email)) % 100000000:08d}"
+    now = datetime.utcnow().isoformat()
+    is_super = 1 if is_super_admin_email(norm_email) else 0
+
+    with get_db_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute("SELECT * FROM users WHERE LOWER(email) = ? OR (google_id IS NOT NULL AND google_id = ?);", (norm_email, google_id))
+        existing = cursor.fetchone()
+
+        if existing:
+            user_id = existing["id"]
+            final_is_super = 1 if (is_super or existing["is_super_admin"] == 1) else 0
+            final_is_admin = 1 if (is_admin or existing["is_admin"] == 1 or final_is_super == 1) else 0
+            if final_is_super:
+                final_role = "SUPER_ADMIN"
+            elif role == "ADMIN" or existing["role"] in ["ADMIN", "SUPER_ADMIN"] or final_is_admin == 1:
+                final_role = "ADMIN"
+            else:
+                final_role = "USER"
+            cursor.execute("""
+                UPDATE users
+                SET name = ?, picture = COALESCE(?, picture), google_id = COALESCE(?, google_id),
+                    role = ?, is_admin = ?, is_super_admin = ?, updated_at = ?, last_login = ?
+                WHERE id = ?;
+            """, (name or existing["name"], picture, google_id, final_role, final_is_admin, final_is_super, now, now, user_id))
+        else:
+            final_is_super = is_super
+            final_is_admin = 1 if (is_admin or final_is_super == 1) else 0
+            final_role = "SUPER_ADMIN" if final_is_super else ("ADMIN" if final_is_admin else "USER")
+            cursor.execute("""
+                INSERT INTO users (id, email, name, picture, role, is_admin, is_super_admin, google_id, created_at, updated_at, last_login)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+            """, (user_id, norm_email, name or "Sentinel User", picture or "", final_role, final_is_admin, final_is_super, google_id, now, now, now))
+
+        cursor.execute("""
+            INSERT INTO audit_logs (transaction_id, action, notes)
+            VALUES (NULL, 'AUTH_LOGIN', ?);
+        """, (f"User login: {norm_email} (Role: {final_role}, Admin: {final_is_admin}, SuperAdmin: {final_is_super})",))
+        conn.commit()
+
+        cursor.execute("SELECT * FROM users WHERE id = ?;", (user_id,))
+        return dict(cursor.fetchone())
+
+
+def list_all_users() -> List[Dict[str, Any]]:
+    """Return all registered platform users with timestamps and roles."""
+    with get_db_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute("SELECT id, email, name, picture, role, is_admin, created_at, last_login FROM users ORDER BY last_login DESC;")
+        return [dict(r) for r in cursor.fetchall()]
+
+
+def get_admin_whitelist() -> List[Dict[str, Any]]:
+    """Return configured Admin email domains and specific accounts."""
+    with get_db_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute("SELECT id, email_or_domain, type, notes, created_at FROM admin_whitelist ORDER BY created_at DESC;")
+        return [dict(r) for r in cursor.fetchall()]
+
+
+def add_to_admin_whitelist(email_or_domain: str, entry_type: str = "EMAIL", notes: str = "") -> bool:
+    """Add a new email or domain to the Admin Whitelist."""
+    norm = email_or_domain.strip().lower()
+    entry_type = entry_type.strip().upper()
+    with get_db_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute("""
+            INSERT OR REPLACE INTO admin_whitelist (email_or_domain, type, notes)
+            VALUES (?, ?, ?);
+        """, (norm, entry_type, notes))
+        cursor.execute("""
+            INSERT INTO audit_logs (transaction_id, action, notes)
+            VALUES (NULL, 'ADMIN_WHITELIST_ADD', ?);
+        """, (f"Added {norm} ({entry_type}) to Admin whitelist.",))
+        conn.commit()
+    return True
+
+
+def delete_from_admin_whitelist(email_or_domain: str) -> bool:
+    """Remove an email or domain from the Admin Whitelist."""
+    norm = email_or_domain.strip().lower()
+    with get_db_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute("DELETE FROM admin_whitelist WHERE LOWER(email_or_domain) = ?;", (norm,))
+        cursor.execute("""
+            INSERT INTO audit_logs (transaction_id, action, notes)
+            VALUES (NULL, 'ADMIN_WHITELIST_REMOVE', ?);
+        """, (f"Removed {norm} from Admin whitelist.",))
+        conn.commit()
+    return True

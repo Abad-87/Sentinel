@@ -199,23 +199,50 @@ html {
   transform: scale(0.98);
 }
 
-.vaultshield-btn-signin {
-  background-color: #F2F2EE;
-  color: #192837;
+/* High-contrast stylish Sign Up CTA Button in VaultShield Navbar */
+.vaultshield-btn-signup-cta {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 8px 22px;
   border-radius: 9999px;
-  padding: 10px 20px;
-  font-size: 0.875rem;
-  font-weight: 600;
-  border: 1px solid rgba(25, 40, 55, 0.08);
+  background: linear-gradient(135deg, #192837 0%, #0d1b2a 100%);
+  color: #ffffff;
+  font-family: var(--font-body);
+  font-size: 0.85rem;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  box-shadow: 0 4px 14px rgba(25, 40, 55, 0.25), inset 0 1px 0 rgba(255, 255, 255, 0.2);
   cursor: pointer;
-  transition: all 0.2s ease;
+  transition: all 0.22s cubic-bezier(0.16, 1, 0.3, 1);
   outline: none;
+  text-decoration: none;
 }
 
-.vaultshield-btn-signin:hover {
-  transform: translateY(-1px);
-  background-color: #e8e8e4;
-  color: #000000;
+.vaultshield-btn-signup-cta:hover {
+  transform: translateY(-2px);
+  background: linear-gradient(135deg, #00f2fe 0%, #4facfe 100%);
+  color: #051329;
+  border-color: rgba(0, 242, 254, 0.4);
+  box-shadow: 0 8px 22px rgba(0, 242, 254, 0.35);
+}
+
+.vaultshield-btn-signup-cta:active {
+  transform: translateY(0);
+}
+
+.vaultshield-sheet-btn-signup {
+  background: linear-gradient(135deg, #192837 0%, #0d1b2a 100%) !important;
+  color: #ffffff !important;
+  font-weight: 700 !important;
+  letter-spacing: 0.04em !important;
+}
+
+.vaultshield-sheet-btn-signup:hover {
+  background: linear-gradient(135deg, #00f2fe 0%, #4facfe 100%) !important;
+  color: #051329 !important;
 }
 
 /* Mobile Hamburger button */
